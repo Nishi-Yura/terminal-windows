@@ -1,234 +1,195 @@
 # terminal-windows
 
-AI エージェント専用の「もう 1 台の Windows PC」を VirtualBox の VM として用意し、
+[![CI](https://github.com/Nishi-Yura/terminal-windows/actions/workflows/ci.yml/badge.svg)](https://github.com/Nishi-Yura/terminal-windows/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/Nishi-Yura)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/nishiyura)
 
-1. その画面をターミナル内に表示して人間が見たり触ったりでき、
-2. AI エージェント（Claude Code など）が MCP 経由でその VM 内の Windows を操作できる
+**AI エージェント専用の「もう 1 台の Windows PC」を、あなたの PC の中に。**
 
-ようにするツールです。AI の操作は **VM の中だけ** で行われ、ホスト PC のマウス・キーボード・クリップボードには一切触れません。AI が作業している間も、ホスト PC は普段どおり使えます。
+> *An AI-only Windows 11 VM you can watch in your terminal and let AI agents drive — your own mouse, keyboard and clipboard are never touched. Works on Windows 11 Home (VirtualBox).*
+
+terminal-windows は、VirtualBox で **AI 専用の Windows 11** を自動で用意するツールです。
+
+- 🤖 **AI はその VM の中だけで作業します。** ホスト PC のマウス・キーボード・クリップボードには一切触れないので、AI が作業している間もあなたは PC を普段どおり使えます。
+- 🖥️ **VM の画面はターミナルの中に表示されます。** 見るだけでなく、クリックや入力もできます。
+- 🧩 **AI のつなぎ方は 2 通りあります。** ホストの Claude Code などから MCP で操作する方法と、AI そのものを VM の中で動かす方法です。
+- 🏠 **Windows 11 Home でも動きます。** Hyper-V は使わず、無料の VirtualBox を使います。
+
+---
+
+## 目次
+
+- [特徴](#特徴)
+- [今の状態](#今の状態)
+- [必要なもの](#必要なもの)
+- [クイックスタート](#クイックスタート)
+- [AI のつなぎ方](#ai-のつなぎ方)
+- [よく使うコマンド](#よく使うコマンド)
+- [ファイルの受け渡し](#ファイルの受け渡し)
+- [速くしたいとき](#速くしたいとき)
+- [注意してほしいこと](#注意してほしいこと)
+- [セキュリティと隔離](#セキュリティと隔離)
+- [開発者向け](#開発者向け)
+- [応援する](#応援する)
+
+---
+
+## 特徴
+
+| | |
+|---|---|
+| **完全無人セットアップ** | ISO を渡すだけ。Windows のインストール、アカウント作成、自動ログオン、ヘルパーの導入、スナップショット作成まで自動です。 |
+| **ターミナルで見て触れる** | Windows Terminal（Sixel）や WezTerm（kitty）に VM の画面を表示します。Win キーや Alt+Tab は **Ctrl+G** のパレットから送れます。 |
+| **AI 向けの操作がそろっている** | スクリーンショット、クリック、ドラッグ、日本語入力、キー操作に加えて、**UI Automation のツリー**でボタンの位置を正確に取れます。 |
+| **失敗しても戻せる** | スナップショットと巻き戻しができます。巻き戻す前の状態も自動で保存します。 |
+| **作業を引き継げる** | 停止は「状態保存」が既定です。アプリを開いたまま止めて、続きから再開できます。作業ノートはホスト側に残ります。 |
+| **ファイルは安全に受け渡し** | 共有フォルダは使わず、Inbox / Outbox を通してコピーします（SHA-256 で照合し、上書きはしません）。 |
+| **VM の中で AI を動かせる** | `terminal-windows claude` で、VM の中の Claude Code をホストのターミナルから使えます。 |
 
 
-> **状態: 0.1.0（未検証）**
-> コードと自動テスト（104 件）はそろっていますが、**実際の VirtualBox VM での動作確認はまだしていません**。
-> 詳しくは [docs/VALIDATION.md](docs/VALIDATION.md) を見てください。
+---
+
+## 今の状態
+
+**0.1.0（開発中）**
+
+- 自動テストは **135 件すべて合格**しています（GitHub Actions で毎回実行）。
+- 実際の VirtualBox 7.2 で、次の段階まで確認済みです。
+  - VM の作成、起動、スナップショット、クローン
+  - Windows セットアップの起動、エディション選択、ファイルのコピー
+- 次の項目は、まだ実機で確認中です。
+  - 初回ログオン以降の流れ
+  - `selftest`
+  - VM の中の AI
+
+詳しくは [docs/VALIDATION.md](docs/VALIDATION.md) にまとめています。ビルド済みの配布物（Release）はまだありません。今はソースからビルドしてください。
+
+---
 
 ## 必要なもの
 
 | 項目 | 要件 |
 |---|---|
 | ホスト OS | Windows 11 Home 以上 |
-| VirtualBox | Oracle VirtualBox 7.1 以上（本体のみ。Extension Pack は不要で、使いません） |
-| スペック目安 | メモリ 16GB 以上、空きディスク 64GB 以上、BIOS で VT-x / AMD-V を有効化 |
-| ゲスト OS | Windows 11 の ISO（ご自身で用意してください。Microsoft 公式の評価版 Enterprise ISO も使えます） |
-| ターミナル | Windows Terminal 1.22 以上（Sixel）か WezTerm（kitty graphics）。どちらも使えない場合は VirtualBox のウィンドウで表示します |
+| 仮想化ソフト | [Oracle VirtualBox](https://www.virtualbox.org/) 7.1 以上。本体だけで動きます（Extension Pack は不要） |
+| スペックの目安 | メモリ 16GB 以上、空きディスク 64GB 以上、BIOS で VT-x / AMD-V を有効にしておく |
+| Windows 11 の ISO | [Microsoft 公式ページ](https://www.microsoft.com/ja-jp/software-download/windows11)から入手します（約 8.3GiB）。**ゲストの Windows のライセンスは利用者の責任です。** |
+| ターミナル | Windows Terminal 1.22 以上か WezTerm。どちらもない場合は VirtualBox のウィンドウで表示します |
+| ビルドする場合 | .NET SDK 8 以上 |
 
-**ライセンス:** ゲストの Windows のライセンスは利用者の責任です。評価版 ISO は約 90 日で期限が切れます。期限が来たら、新しく作り直してください（`clean-setup` スナップショットから `clone` しても、評価期間はリセットされません）。
+---
 
-### WSL2 / Docker Desktop と一緒に使う場合
+## クイックスタート
 
-WSL2、Docker Desktop、「仮想マシン プラットフォーム」、メモリ整合性などが有効だと、VirtualBox は Windows Hypervisor Platform を経由して動きます。**動作はしますが遅くなります。** `doctor` はこの状態を検出して警告を出すだけで、設定は変更しません。
-
-### 速くしたいとき
-
-1. **ホストのハイパーバイザーをオフにする（効果：大）**
-   - 管理者のターミナルで `bcdedit /set hypervisorlaunchtype off` を実行し、再起動します。元に戻すときは `bcdedit /set hypervisorlaunchtype auto` です。
-   - オフの間は WSL2 と Docker Desktop が使えません。メモリ整合性もオフにする必要があり、ホストのセキュリティが下がります。
-   - ご自身で判断して実行してください。VM のセットアップ中は再起動しないでください。
-2. **VM の CPU を増やす:** 新しく作るときは `--cpus 6` のように指定します。既存の VM は、止めた状態で `VBoxManage modifyvm twin-NAME --cpus 6` を実行します。
-3. **VM の中を軽くする:** 次のコマンドで、VM の中だけの設定を変えます。
-   ```bash
-   terminal-windows tune default --yes
-   ```
-   - 変更するもの：視覚効果、検索インデックス、SysMain、バックグラウンドアプリ、電源プラン（高パフォーマンス）。
-   - `--defender` を付けると、Microsoft Defender のスキャン対象からシステムドライブを外します。VM の中の保護が弱まるので、使い捨て VM でのみ使ってください。
-   - 先に `snapshot` を取っておくと安心です。
-4. **解像度を下げる:** `--width 1280 --height 800` のように指定すると、画面取得とビューアの負荷が減ります。
-
-## ビルド
-
-.NET SDK 8 以上が必要です。
+**1. ビルドしてインストールする**（管理者権限は不要です）
 
 ```bash
-powershell -ExecutionPolicy Bypass -File build.ps1 -Test
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
-
-ビルドすると、`dist\terminal-windows.exe`（ホスト CLI）と `dist\guest\TerminalWindowsGuest.exe`（ゲスト用ヘルパー）ができます。2 つはこのフォルダ構成のまま置いておいてください。
-
-ユーザー単位でインストールする場合（管理者権限は不要です）:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File install.ps1 -Skill -Mcp
+powershell -ExecutionPolicy Bypass -File install.ps1 -Skill
 ```
 
-`%USERPROFILE%\.terminal-windows\bin` にコピーし、ユーザーの PATH に追加します（AppData は、パッケージ化されたアプリから見ると別の場所に振り替えられるため使いません）。PATH に入れずにフルパスで実行する場合、PowerShell では先頭に `&` が必要です（例: `& "C:\…\dist\terminal-windows.exe" doctor`）。`-Skill` を付けると Claude Code のスキルを入れ、`-Mcp` を付けると `claude mcp add` で登録します。
+`%USERPROFILE%\.terminal-windows\bin` に入り、PATH に追加されます。新しいターミナルを開いてから続けてください。
 
-## ISO の用意
-
-Microsoft の公式ページ（https://www.microsoft.com/ja-jp/software-download/windows11）で、「x64 デバイス用 Windows 11 ディスク イメージ (ISO)」を日本語で選んでダウンロードしてください（約 8.3GiB）。中に入っているエディションは次のコマンドで確認できます。
-
-```bash
-terminal-windows iso-info C:\Users\you\Downloads\Windows11_Client_x64_ja-jp.iso
-```
-
-一般向けの ISO には Home / Education / Pro などが入っています。`create` / `up` は既定で **Pro** を選びます。変えたい場合は `--edition Home` のように指定してください。エディションを選ばないと、無人インストールがエディション選択の画面で止まります。
-
-## 使い方
+**2. 環境を確認する**
 
 ```bash
 terminal-windows doctor
 ```
 
+**3. VM を作る**（1〜2 時間ほどかかります。**ご自身で開いたターミナルで**実行し、その間は PC をスリープさせないでください）
+
 ```bash
-terminal-windows up --iso C:\ISO\Win11_Japanese_x64.iso
+terminal-windows up --iso C:\Users\you\Downloads\Windows11_Client_x64_ja-jp.iso
 ```
 
-`up` を 1 回実行するだけで、次の処理がすべて自動で進みます。
+Windows のインストールから初期設定、ヘルパーの導入、スナップショット `clean-setup` の作成まで、すべて自動で進みます。一般向けの ISO からは、既定で **Pro** を入れます（`--edition` で変更できます）。
 
-1. VM を作成する（EFI、セキュアブート、TPM 2.0、NAT）
-2. `autounattend.xml` で Windows を無人インストールする（ローカルアカウント `agent`、パスワードはランダム生成、OOBE はスキップ、自動ログオン）
-3. 初回ログオン時に、ゲスト用ヘルパーと Guest Additions をインストールし、ゲスト内の設定を行う
-4. 再起動後、ヘルパーとの通信を確認し、解像度を設定し、インストール用メディアを取り外す
-5. スナップショット `clean-setup` を作成し、ビューアを開く
-
-所要時間は 20〜60 分ほどです（WSL2 などが有効で WHP 経由になる環境では、さらにかかります）。途中経過は次の 2 つの方法で見られます。
-
-- `terminal-windows show default` で VirtualBox のウィンドウを開く
-- 2 分ごとに保存される `machines\default\logs\setup-screen.png` を見る
-
-セットアップが終わったら、実機チェックを自動で実行できます。
+**4. 動作を確認する**
 
 ```bash
 terminal-windows selftest default
 ```
 
-`selftest` は、VM の中で次の項目を順に試し、結果を `logs\selftest-*.md` に書き出します。
-
-- スクリーンショット
-- ポインター座標の正確さ
-- Win+R
-- 日本語入力
-- UI Automation
-- メモ帳の起動、クリック、終了
-- スクロールとドラッグ
-- ファイルの受け渡し
-
-`--with-restore` を付けると、スナップショットと巻き戻しも試します。
-
-**時間のかかるコマンドの注意（実機で起きたこと）:**
-
-- **自分のターミナルで実行する:** `create` / `up` は、ご自身で開いたターミナルで実行してください。Claude デスクトップアプリなど、ほかのアプリの中から実行すると、そのアプリを終了したときに VirtualBox ごと止まることがあります。この検証では、インストールが途中で壊れました。
-- **PC をスリープさせない:** セットアップ中は、PC のスリープ、シャットダウン、ノート PC のふたを閉じることを避けてください。Windows のファイルコピー中に VM が止まると、インストールが壊れて作り直しになります。
-- **作成コマンドが途中で止まった場合:** VM さえ生きていれば、`terminal-windows start NAME` で完了待ちと仕上げ（`clean-setup` の作成など）を引き継げます。
-
-**すでにある VM を作り直すことはありません。** 2 回目以降の `up` は、起動して接続するだけです。手順だけ確認したいときは `--plan` を付けてください（何も変更しません）。
-
-### ビューアを VM なしで試す
-
-```bash
-terminal-windows view-demo
-```
-
-試験用の画面を送るデモ用ゲストに、ビューアをつないで開きます。画面には座標グリッド、アニメーション、受け取った入力の記録が出ます。入力は記録するだけで、ホストにも VM にも送りません。表示方式（Sixel / kitty）と、クリック・キー入力の確認に使ってください。
-
-### よく使うコマンド
+**5. 画面を見る**
 
 ```bash
 terminal-windows view default
 ```
 
-```bash
-terminal-windows stop default
-```
+ビューアの中では **Ctrl+G** で Windows のショートカット一覧を開けます。**Ctrl+]** でビューアを閉じます（VM は動き続けます）。
+
+> VM がなくても、ビューアの見え方は `terminal-windows view-demo` で試せます。
+
+---
+
+## AI のつなぎ方
+
+### A. ホストの AI から操作する（MCP）
 
 ```bash
-terminal-windows start default
+claude mcp add --scope user terminal-windows -- terminal-windows mcp default
 ```
 
-- `stop` は既定で状態保存（savestate）します。開いているアプリはそのまま残り、`start` で続きから再開できます。OS をシャットダウンしたい場合は `--shutdown`、電源を強制的に切りたい場合は `--force` を付けます。
-- ビューアでは **Ctrl+G** で Windows のショートカット一覧（Win キー、Win+R、Alt+Tab など）を開き、**Ctrl+]** で終了します。ビューアを閉じても VM は動き続けます。
-- ビューアのマウス操作（押す・動かす・離す）は、その場でゲストに送られます。ダブルクリックやトリプルクリックは Windows 自身が判定し、ドラッグ中の動きもそのまま見えます。ゲストのヘルパーが古い場合は、ボタンを離したときにクリックかドラッグとしてまとめて送る方式に自動で切り替わります（`terminal-windows update-helper NAME` で更新できます）。
-- 用途ごとに VM を分けられます（例: `up unity`、`up web`）。セットアップ済みの状態から複製したい場合は `clone default web2 --from-snapshot clean-setup` を使います（リンククローン）。
-
-全コマンドの一覧は `terminal-windows --help` で確認できます。
-
-### Claude Code から使う
-
-```bash
-claude mcp add terminal-windows -- terminal-windows mcp default
-```
-
-```bash
-terminal-windows skills install
-```
-
-MCP ツールは次のとおりです。
+Claude Code などの MCP クライアントから、次のツールで VM を操作できます。ほかのクライアント向けの設定は `terminal-windows mcp --config` で出力できます。
 
 | ツール | 内容 |
 |---|---|
 | `screenshot` | 画面を取得する |
-| `click` / `drag` / `scroll` | マウスで操作する |
-| `type` / `key` | 文字やキーを入力する |
-| `ui_tree` | UI Automation の要素ツリーを取得する |
+| `click` / `drag` / `scroll` | マウス操作 |
+| `type` / `key` | 文字入力（日本語も可）、キー操作（`ctrl+s`、`win+r` など） |
+| `ui_tree` | UI Automation の要素ツリー（ボタンの名前と位置） |
 | `wait` | 一定時間、または画面が変わるまで待つ |
-| `status` | VM とヘルパーの状態を確認する |
-| `snapshot` / `restore` | スナップショットを作成する / 巻き戻す |
-| `export_file` / `list_inbox` | ファイルを受け渡す |
-| `read_notes` / `append_notes` | 作業ノートを読み書きする |
+| `status` | VM の状態、ロック画面かどうか |
+| `snapshot` / `restore` | スナップショット、巻き戻し |
+| `export_file` / `list_inbox` | ファイルの受け渡し |
+| `read_notes` / `append_notes` | 作業ノート |
 
-補足:
-
-- MCP のスクリーンショットは、モデルの画像サイズ上限に収まるよう縮小されます（既定の 1600×900 なら約 1430×804）。座標はすべて、この縮小後の画像の座標で指定します。
-- このリポジトリは Claude Code プラグインとしても読み込めます（`.claude-plugin/`、`.mcp.json`、`skills/terminal-windows/SKILL.md`）。
-- 他の MCP クライアント向けの設定は `terminal-windows mcp --config` で出力できます。
-
-### VM の中で AI（Claude Code）を動かす
-
-MCP でホストの Claude から操作する方法のほかに、**AI そのものを VM の中で動かす**こともできます。ホストの PC には一切触れず、使い捨ての VM の中で AI に広い権限を与えられます。
+### B. AI そのものを VM の中で動かす
 
 ```bash
 terminal-windows agent-install default --yes
 ```
 
 ```bash
-terminal-windows snapshot default --name agent-ready
-```
-
-```bash
 terminal-windows claude default
 ```
 
-**`agent-install` が VM の中で行うこと**
+`agent-install` は、VM の中に Git、Claude Code、画面操作用の MCP、スキルを入れます。`claude` を実行すると、VM の中の Claude Code がホストのターミナルに表示されます（**Ctrl+]** で切り離し）。
 
-1. Git for Windows と Claude Code（公式インストーラー）を入れる
-2. 画面操作用のローカル MCP サーバー `desktop`（`TerminalWindowsGuest.exe mcp`）を Claude Code に登録する
-3. VM 内用のスキルを入れる
+- **サインインはご本人が行ってください。** 表示された URL をホストのブラウザで開き、出てきたコードを貼り付けます。
+- サインイン情報は VM の中に保存され、VM の中の AI からも読める状態になります。
+- VM からインターネットに出る必要があります（`--offline` の VM では使えません）。
 
-`--yes` を付けずに実行すると、手順を表示するだけで何も変更しません。`--yes` を付けると、winget の利用規約に同意して進めます。Git for Windows は GPLv2 です。
+---
 
-**`claude` で VM の中の Claude Code につなぐ**
-
-`claude` を実行すると、VM の中の Claude Code の画面が、ホストのターミナルにそのまま表示されます。
-
-- Claude Code は、VM の中でウィンドウを持たない疑似端末（ConPTY）で動きます。そのため、画面を操作しても自分の端末に誤って入力することはありません。
-- **Ctrl+]** で切り離します。このとき、VM の中の Claude Code も終了します。前回の会話を続けたいときは、`terminal-windows claude default -- --continue` で起動します。
-
-**サインインについて:** サインインは、ご本人が行ってください。初回の `claude` で表示される URL をホストのブラウザで開き、表示されたコードをターミナルに貼り付けます。
-
-**サインイン情報の扱い:** サインイン情報は VM の中に保存され、VM の中の AI からも読める状態になります。
-
-**ネットワーク:** VM からインターネットに出る必要があるため、`--offline` の VM では使えません。
+## よく使うコマンド
 
 | コマンド | 内容 |
 |---|---|
-| `terminal-windows claude NAME [-- 引数]` | VM の中で Claude Code を起動して、このターミナルにつなぐ |
-| `terminal-windows term NAME [-- コマンド]` | VM の中の端末につなぐ（既定は PowerShell） |
-| `terminal-windows exec NAME "スクリプト"` | VM の中で PowerShell を 1 回実行する |
+| `up [NAME] --iso PATH` | VM がなければ作り、起動して、ビューアを開く |
+| `start` / `stop` NAME | 起動 / 停止。停止は既定で状態保存（`--shutdown` で OS を終了、`--force` で強制的に電源を切る） |
+| `view NAME` | ターミナルで画面を見る |
+| `show` / `hide` NAME | VirtualBox のウィンドウを出す / 消す |
+| `status NAME` / `ls` | 状態 / 一覧 |
+| `snapshot NAME --name LABEL` | スナップショットを作る |
+| `restore NAME LABEL` | 巻き戻す（直前の状態は `pre-restore-*` として自動保存） |
+| `clone NAME NEW` | セットアップ済みの状態から複製する |
+| `push` / `pull` NAME | ファイルを送る / 受け取る |
+| `notes NAME` | 作業ノートを見る |
+| `claude` / `term` / `exec` NAME | VM の中で Claude Code / 端末 / PowerShell を動かす |
+| `tune NAME --yes` | VM の中を軽くする |
+| `selftest NAME` | 実機での動作を確認する |
+| `doctor` | 環境を診断する |
 
-成果物の受け渡し（`pull` / `push`）、スナップショット、巻き戻し、停止は、今までどおりホストから操作します。
+全部の一覧は `terminal-windows --help` で見られます。VM を消すコマンドは、誤って消すのを防ぐため用意していません。
 
-### ファイルの受け渡し
+---
 
-共有フォルダは使わず、制御チャネル経由でファイルをコピーします。
+## ファイルの受け渡し
 
 ```bash
 terminal-windows push default C:\work\data.xlsx
@@ -238,43 +199,91 @@ terminal-windows push default C:\work\data.xlsx
 terminal-windows pull default
 ```
 
-- `push` で送ったファイルは、ゲストの `Desktop\Inbox` に置かれます。
-- `pull` は、ゲストの `Desktop\Outbox` を `%USERPROFILE%\.terminal-windows\machines\default\outbox\YYYYMMDD-HHMMSS\` にコピーします。
-- `pull default --sync-outbox` を使うと、ゲストの Outbox に書き込みが終わったファイルを自動でホストへコピーし続けます。
-- 名前に `..` や絶対パスを含むファイルは拒否します。シンボリックリンクとジャンクションはたどりません。転送後は SHA-256 で照合し、既存のファイルは上書きしません。ホストは受け取ったファイルを実行したり展開したりしません。
+- `push` で送ったものは、VM のデスクトップの **Inbox** に置かれます。
+- `pull` は、VM のデスクトップの **Outbox** を、ホストの `%USERPROFILE%\.terminal-windows\machines\default\outbox\日時\` にコピーします。
+- `pull --sync-outbox` を付けると、Outbox に置かれたファイルを自動でコピーし続けます。
 
-## セキュリティと隔離について（必ず読んでください）
+---
+
+## 速くしたいとき
+
+WSL2、Docker Desktop、メモリ整合性などが有効な PC では、VirtualBox が Windows のハイパーバイザーを経由して動くため、**かなり遅くなります**（`doctor` が警告します）。
+
+1. **ハイパーバイザーをオフにする（効果：大）**
+   - 管理者のターミナルで `bcdedit /set hypervisorlaunchtype off` を実行し、再起動します。元に戻すときは `auto` を指定します。
+   - オフの間は WSL2 と Docker が使えません。メモリ整合性もオフにする必要があり、ホストのセキュリティが下がります。ご自身で判断してください。
+2. **VM の CPU を増やす:** 作成時に `--cpus 6` のように指定します。
+3. **VM の中を軽くする:** `terminal-windows tune default --yes` を実行します（視覚効果、検索インデックス、SysMain などをオフ）。
+4. **解像度を下げる:** `--width 1280 --height 800` のように指定します。
+
+---
+
+## 注意してほしいこと
+
+- **時間のかかるコマンド（`up` / `create`）は、ご自身のターミナルで実行してください。** ほかのアプリの中から実行すると、そのアプリの終了と一緒に止まることがあります。
+- **セットアップ中は PC をスリープさせないでください。** Windows のコピー中に VM が止まると、作り直しになります。作成コマンドだけが止まった場合は、`terminal-windows start NAME` で続きを引き継げます。
+- **PowerShell でフルパスを使って実行するときは、先頭に `&` が必要です**（例: `& "C:\…\terminal-windows.exe" doctor`）。
+- 評価版の ISO は約 90 日で期限が切れます。
+
+---
+
+## セキュリティと隔離
 
 - **ホストとは切り離されています。** ホストのフォルダ、クリップボード、ドラッグ＆ドロップ、オーディオ、USB は VM に接続しません。共有フォルダは `--share PATH` を指定したときだけ使え、既定は読み取り専用です。
-- **ネットワークには出られます。** VirtualBox の NAT 経由で、ゲストからインターネットへ出られます。`--nat-localhostreachable1 off` を設定しているため、ホストの localhost のサービスには届きませんが、ホストの LAN 側のアドレスなどには届く可能性があります。
-- **`--offline` は隔離の保証ではありません。** ゲストのファイアウォールで外向きの通信を遮断するだけの設定です。ゲスト内の AI は管理者権限を持っているので、ファイアウォールを自分で解除できます。「うっかり外部に出ない」ための設定と考えてください。
-- **ゲスト内の設定は、AI 専用の使い捨て環境だから許容しているものです。** UAC の確認なし昇格・セキュアデスクトップの無効化、自動ログオン、ロック画面の無効化は、ゲスト VM の中でだけ行います。**ホストや普段使いの PC には絶対に適用しないでください。** ゲスト用ヘルパーは、SMBIOS が VirtualBox でない環境では起動を拒否します。ただし、これは誤実行を防ぐためのもので、セキュリティを保証するものではありません。
-- **通信は制限しています。** ホスト側のポートは `127.0.0.1` にだけ割り当てます。接続時にはランダムなトークンで認証し、不一致なら即座に切断します。メッセージのサイズ上限とタイムアウトも設けています。
-- **秘密情報の扱い:** 接続トークンと自動ログオン用パスワードは、DPAPI（現在のユーザーだけが復号できる）で暗号化して `machine.json` に保存し、そのファイルには現在のユーザーだけが読める ACL を設定しています。自動ログオン用パスワードは仕組み上ゲスト内にも残るため、ランダムに生成した値だけを使います（普段使いのパスワードは使いません）。
-- **使い道の制限:** 堅牢なサンドボックスではないため、マルウェアの解析には使わないでください。また、CAPTCHA、ボット検知、アンチチート、各種サービスの利用規約を回避する機能はありません。
+- **VM からはインターネットに出られます。** NAT 経由です。ホストの localhost のサービスには届きませんが、LAN には届く可能性があります。
+- **`--offline` は隔離の保証ではありません。** VM の中のファイアウォールで遮断するだけです。VM の中の AI は管理者権限を持っているので、自分で解除できます。
+- **VM の中の設定（UAC の確認なし昇格、自動ログオン、ロック画面なし）は、使い捨て VM だから許容しているものです。** ホストには絶対に適用しないでください。ゲスト用ヘルパーは、VirtualBox 以外の環境では起動しません（誤実行を防ぐためのもので、セキュリティの保証ではありません）。
+- **通信:** ホストの `127.0.0.1` だけで待ち受け、ランダムなトークンで認証します。トークンと VM のパスワードは、DPAPI で暗号化して保存します。
+- **使い道の制限:** 堅牢なサンドボックスではないため、マルウェアの解析には使わないでください。CAPTCHA、ボット検知、アンチチート、各種サービスの規約を回避する機能はありません。
 
-## データの保存場所
+---
 
-`%USERPROFILE%\.terminal-windows\machines\NAME\`（環境変数 `TERMINAL_WINDOWS_HOME` で変更できます）に、次のものが入っています。
+## 開発者向け
 
-- `machine.json`
-- `vm\`（VDI ディスクと VM の定義）
-- `outbox\` / `inbox\`
-- `notes.md`（作業ノート）
-- `logs\`（セットアップ中の画面 `setup-screen.png`、`selftest-*.md` など）
+<details>
+<summary>構成・データの保存場所・テスト</summary>
 
-**仕様からの変更:** 仕様書では `%LOCALAPPDATA%\terminal-windows` でしたが、変更しました。Claude デスクトップアプリなど MSIX パッケージのアプリから起動されると、Windows が AppData への書き込みをアプリ専用の場所へ黙って振り替えます。そのため VirtualBox がセットアップ用 ISO を見つけられず、作業ノートも二重化してしまいます（実機で発生を確認済み）。`TERMINAL_WINDOWS_HOME` を AppData の下に向けた場合は、`doctor` がエラーとして知らせます。
-
-VM を削除するコマンドは、誤って消してしまうのを防ぐため、まだ用意していません。
-
-## 構成
+### 構成
 
 ```
-src/TerminalWindows.Protocol   共通: 長さプレフィックス付き JSON とバイナリのフレーム、RPC、トークン認証、キー解析、パス検証、PNG/LZ4
-src/TerminalWindows.Cli        ホスト CLI: IVmBackend（VirtualBoxBackend）、無人セットアップ、ビューア、MCP サーバー
-src/TerminalWindows.Guest      ゲスト用ヘルパー: WGC → DXGI → GDI の順で画面を取得、SendInput、UI Automation、インストーラー、自己更新
+src/TerminalWindows.Protocol   共通（通信のフレーム、RPC、トークン認証、キー解析、パス検証、PNG/LZ4、MCP の共通処理）
+src/TerminalWindows.Cli        ホスト CLI（VirtualBox の操作、無人セットアップ、ビューア、MCP サーバー、VM の中の AI）
+src/TerminalWindows.Guest      ゲスト用ヘルパー（画面取得 WGC→DXGI→GDI、SendInput、UI Automation、ConPTY、インストーラー、自己更新）
 tests/TerminalWindows.Tests    自動テスト
-skills/terminal-windows        Claude Code スキル
+skills/                        Claude Code 用スキル（ホスト用 / VM の中用）
+docs/VALIDATION.md             検証記録
+terminal-windows-SPEC.md       設計の元になった仕様書
 ```
 
-将来 Hyper-V のバックエンド（Pro 以上）を追加する場合は、`IVmBackend` を実装し、`GetGuestEndpoint` を差し替える想定です。
+### データの保存場所
+
+`%USERPROFILE%\.terminal-windows\machines\NAME\`（`TERMINAL_WINDOWS_HOME` で変更できます）に、`machine.json`、VM のディスク、`outbox\` / `inbox\`、`notes.md`、`logs\` が入ります。
+
+`%LOCALAPPDATA%` は使いません。Claude デスクトップアプリなどパッケージ化されたアプリから起動されると、Windows が AppData への書き込みを別の場所に振り替えてしまうためです。
+
+### テスト
+
+```bash
+dotnet test tests/TerminalWindows.Tests
+```
+
+`TW_VBOX_TESTS=1` を付けると、本物の VirtualBox を使ったテストも実行します。`TW_TEST_ISO=<path>` を付けると、本物の ISO を読むテストも実行します。
+
+### プラグイン
+
+このリポジトリは、Claude Code のプラグインとしても読み込めます（`.claude-plugin/`、`.mcp.json`、`skills/`）。
+
+</details>
+
+---
+
+## 応援する
+
+terminal-windows が役に立ったら、応援してもらえるとうれしいです。開発の励みになります。
+
+[![Sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/Nishi-Yura)
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/nishiyura)
+
+## ライセンス
+
+[MIT License](LICENSE) © 2026 Nishi-Yura
