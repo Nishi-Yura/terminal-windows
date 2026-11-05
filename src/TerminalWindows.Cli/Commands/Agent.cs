@@ -31,7 +31,7 @@ public static class Agent
         a.RejectUnknown();
         var extra = a.Positionals.Skip(1).ToList();
         string command = extra.Count == 0 ? defaultCommand
-            : prefix is null ? string.Join(' ', extra)
+            : prefix is null ? (extra.Count == 1 ? extra[0] : string.Join(' ', extra.Select(Quote)))
             : prefix + " " + string.Join(' ', extra.Select(Quote));
         if (Console.IsInputRedirected || Console.IsOutputRedirected)
             throw new CliException("This command needs an interactive terminal.");
@@ -90,7 +90,7 @@ public static class Agent
             try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction SilentlyContinue } catch {}
             $winget = Get-Command winget -ErrorAction SilentlyContinue
             if ($winget) {
-              winget install --id Git.Git -e --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+              winget install --id Git.Git -e --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
               if ($LASTEXITCODE -eq 0) { 'installed with winget'; exit 0 }
             }
             # Fallback: the official installer from the Git for Windows GitHub releases.
@@ -105,8 +105,17 @@ public static class Agent
             """, 1500),
         ("Install Claude Code (official installer)",
             """
-            if (Get-Command claude -ErrorAction SilentlyContinue) { 'claude already installed: ' + (claude --version); exit 0 }
-            irm https://claude.ai/install.ps1 | iex
+            if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { irm https://claude.ai/install.ps1 | iex }
+            # The installer may only print "not in your PATH": add %USERPROFILE%\.local\bin to the user PATH.
+            $bin = Join-Path $env:USERPROFILE '.local\bin'
+            $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+            if ((Test-Path (Join-Path $bin 'claude.exe')) -and (($userPath -split ';') -notcontains $bin)) {
+              [Environment]::SetEnvironmentVariable('Path', (@($userPath, $bin) | Where-Object { $_ }) -join ';', 'User')
+              'added ' + $bin + ' to the user PATH'
+            }
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+            if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw 'claude.exe was not found after installing' }
+            'claude ' + (claude --version)
             """, 1500),
         ("Check Claude Code",
             "claude --version", 120),
@@ -158,7 +167,10 @@ public static class Agent
         try
         {
             await File.WriteAllTextAsync(Path.Combine(tmp, "terminal-windows-desktop", "SKILL.md"), GuestSkillText(), new UTF8Encoding(false));
-            var skillsDir = $@"C:\Users\{m.User}\.claude\skills";
+            // Ask the guest for its real profile folder instead of assuming C:\Users\<user>.
+            var profile = (await RunScriptAsync(c, "$env:USERPROFILE", 60))["stdout"]?.GetValue<string>()?.Trim();
+            if (string.IsNullOrEmpty(profile)) throw new CliException("Could not read USERPROFILE in the guest.");
+            var skillsDir = Path.Combine(profile, ".claude", "skills");
             await RunScriptAsync(c, $"Remove-Item -Recurse -Force '{skillsDir}\\terminal-windows-desktop' -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force '{skillsDir}' | Out-Null", 60);
             await c.PushAsync(Path.Combine(tmp, "terminal-windows-desktop"), skillsDir, TransferLimits.Default);
         }
@@ -194,18 +206,32 @@ public sealed class GuestTerminalClient
         var stdout = Console.OpenStandardOutput();
         var done = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
         int ptyId = -1;
+        // The guest can send output (and even the exit) before the pty_open reply tells us the id:
+        // keep such early events and replay them once the id is known.
+        var early = new List<Protocol.Message>();
+        var gate = new object();
 
-        _client.Rpc.EventReceived += msg =>
+        void Handle(Protocol.Message msg)
         {
             var data = msg.Json["data"] as JsonObject;
-            if (data?["id"]?.GetValue<int>() != ptyId) return;
             if (msg.Event == "pty_output" && msg.Attachments.Count == 1)
             {
                 lock (stdout) { stdout.Write(msg.Attachments[0]); stdout.Flush(); }
             }
             else if (msg.Event == "pty_exit")
             {
-                done.TrySetResult(data["exitCode"]?.GetValue<int>() ?? 0);
+                done.TrySetResult(data?["exitCode"]?.GetValue<int>() ?? 0);
+            }
+        }
+
+        _client.Rpc.EventReceived += msg =>
+        {
+            if (msg.Event is not ("pty_output" or "pty_exit")) return;
+            var id = (msg.Json["data"] as JsonObject)?["id"]?.GetValue<int>();
+            lock (gate) // also keeps replayed early output ahead of later output
+            {
+                if (ptyId < 0) { early.Add(msg); return; }
+                if (id == ptyId) Handle(msg);
             }
         };
         _client.Rpc.Disconnected += _ => done.TrySetResult(-1);
@@ -222,8 +248,13 @@ public sealed class GuestTerminalClient
         {
             throw new CliException("The guest helper is too old for terminals. Run 'terminal-windows update-helper NAME' first.");
         }
-        ptyId = opened["id"]!.GetValue<int>();
         WriteStatus(stdout, $"[terminal-windows] connected to the VM: {command} — {Agent.DetachHint}");
+        lock (gate)
+        {
+            ptyId = opened["id"]!.GetValue<int>();
+            foreach (var m in early.Where(m => (m.Json["data"] as JsonObject)?["id"]?.GetValue<int>() == ptyId)) Handle(m);
+            early.Clear();
+        }
 
         // stdin pump on its own thread (console reads cannot be cancelled).
         var input = System.Threading.Channels.Channel.CreateUnbounded<byte[]>();

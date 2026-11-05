@@ -42,12 +42,15 @@ public sealed class GuestTerminals
         var block = PseudoConsoleProcess.BuildEnvironmentBlock();
         var path = block.Split('\0').FirstOrDefault(l => l.StartsWith("Path=", StringComparison.OrdinalIgnoreCase))?[5..] ?? "";
         var exts = Path.HasExtension(exe) ? new[] { "" } : new[] { ".exe", ".cmd", ".bat", ".com" };
-        foreach (var dir in path.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        // The Claude Code installer puts claude.exe in %USERPROFILE%\.local\bin and may not add it to PATH.
+        var dirs = path.Split(';', StringSplitOptions.RemoveEmptyEntries).Select(d => d.Trim().Trim('"'))
+            .Append(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin"));
+        foreach (var dir in dirs)
         {
             foreach (var ext in exts)
             {
                 string candidate;
-                try { candidate = Path.Combine(dir.Trim(), exe + ext); } catch { continue; }
+                try { candidate = Path.Combine(dir, exe + ext); } catch { continue; }
                 if (!File.Exists(candidate)) continue;
                 var quoted = $"\"{candidate}\"{rest}";
                 return candidate.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase) || candidate.EndsWith(".bat", StringComparison.OrdinalIgnoreCase)
@@ -64,12 +67,16 @@ public sealed class GuestTerminals
         int id = Interlocked.Increment(ref _nextId);
         _ptys[id] = (proc, owner);
         Log.Write($"pty {id} started: {command} (pid {proc.ProcessId})");
-        _ = Task.Run(() => PumpOutputAsync(id, proc, owner));
+        var pump = Task.Run(() => PumpOutputAsync(id, proc, owner));
         _ = Task.Run(async () =>
         {
-            int code = await proc.WaitForExitAsync();
-            await Task.Delay(500);            // let the last output drain
+            int code;
+            try { code = await proc.WaitForExitAsync(proc.Closed); }
+            catch (OperationCanceledException) { return; } // closed by the host (detach / disconnect)
+            await Task.Delay(300);            // let ConPTY flush the last frame
             proc.ClosePseudoConsoleOnly();    // ends the output stream
+            // Exit is announced only after every byte of output has been sent.
+            try { await pump.WaitAsync(TimeSpan.FromSeconds(10)); } catch { }
             Log.Write($"pty {id} exited with {code}");
             try { await owner.SendEventAsync("pty_exit", new JsonObject { ["id"] = id, ["exitCode"] = code }); } catch { }
             Close(id);
@@ -128,7 +135,7 @@ public sealed class GuestTerminals
             WorkingDirectory = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
         };
         foreach (var a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command",
-                     "[Console]::OutputEncoding=[Text.Encoding]::UTF8; " + script })
+                     "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; " + script })
             psi.ArgumentList.Add(a);
         // Fresh PATH (tools installed after logon must be found).
         var block = PseudoConsoleProcess.BuildEnvironmentBlock();

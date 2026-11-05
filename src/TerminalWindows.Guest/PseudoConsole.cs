@@ -108,11 +108,18 @@ public sealed class PseudoConsoleProcess : IDisposable
         if (_hpc != IntPtr.Zero) ResizePseudoConsole(_hpc, new COORD { X = Math.Max((short)20, cols), Y = Math.Max((short)5, rows) });
     }
 
-    public bool HasExited => WaitForSingleObject(_process, 0) == 0;
+    private readonly CancellationTokenSource _closed = new();
+
+    /// <summary>Cancelled when this object is disposed (e.g. the host detached), so waiters stop.</summary>
+    public CancellationToken Closed => _closed.Token;
+
+    // WAIT_OBJECT_0 = exited; WAIT_FAILED (handle already closed) is also treated as exited.
+    public bool HasExited => _disposed == 1 || WaitForSingleObject(_process, 0) is 0 or 0xFFFFFFFF;
 
     public async Task<int> WaitForExitAsync(CancellationToken ct = default)
     {
         while (!HasExited) await Task.Delay(200, ct);
+        ct.ThrowIfCancellationRequested();
         GetExitCodeProcess(_process, out var code);
         return (int)code;
     }
@@ -127,10 +134,11 @@ public sealed class PseudoConsoleProcess : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        if (!HasExited)
+        if (WaitForSingleObject(_process, 0) != 0)
         {
             try { Process.GetProcessById(ProcessId).Kill(entireProcessTree: true); } catch { }
         }
+        _closed.Cancel();
         ClosePseudoConsoleOnly();
         try { _input.Dispose(); } catch { }
         try { _output.Dispose(); } catch { }

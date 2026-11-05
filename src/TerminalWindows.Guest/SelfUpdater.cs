@@ -67,7 +67,11 @@ public sealed class SelfUpdater
             // the old exe (and lock it) during the swap.
             File.WriteAllText(PendingMarker, DateTime.UtcNow.ToString("o"));
             // The swap runs after this process exits; attrib -r because a CD-copied exe may be read-only.
-            var script = $"/c ping -n 3 127.0.0.1 >nul & attrib -r \"{target}\" & move /y \"{StagingPath}\" \"{target}\" & del \"{PendingMarker}\" & schtasks /run /tn \"{ProtocolConstants.ScheduledTaskName}\"";
+            // Other instances (e.g. 'mcp' servers started by an agent inside the VM) lock the exe: stop them first.
+            var log = Path.Combine(GuestPaths.LogDir, "update.log");
+            var script = $"/c ping -n 3 127.0.0.1 >nul & taskkill /f /im TerminalWindowsGuest.exe >nul 2>&1 & attrib -r \"{target}\" & " +
+                         $"(move /y \"{StagingPath}\" \"{target}\" && echo %date% %time% swapped>>\"{log}\" || echo %date% %time% MOVE FAILED>>\"{log}\") & " +
+                         $"del \"{PendingMarker}\" & schtasks /run /tn \"{ProtocolConstants.ScheduledTaskName}\"";
             Process.Start(new ProcessStartInfo("cmd.exe", script) { CreateNoWindow = true, UseShellExecute = false });
             Log.Write("update accepted; restarting");
             _ = Task.Delay(500).ContinueWith(_ => Environment.Exit(0));
