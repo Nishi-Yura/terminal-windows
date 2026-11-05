@@ -6,7 +6,7 @@ description: You are running inside a disposable Windows VM made for AI work (te
 # Working inside the terminal-windows VM
 
 You run **inside** a Windows 11 VM that exists only for AI work. The person talks to you from their
-own PC through `terminal-windows claude`; their PC is not reachable from here and you cannot touch it.
+own PC through `terminal-windows` (claude / codex / gemini / term); their PC is not reachable from here and you cannot touch it.
 
 ## What you have
 
@@ -34,7 +34,7 @@ own PC through `terminal-windows claude`; their PC is not reachable from here an
   (`terminal-windows snapshot NAME` on their PC). You cannot snapshot or restore from inside.
 - Do not try to bypass CAPTCHAs, bot detection, anti-cheat, licence checks, or services' terms.
 - The VM has internet access. Do not send the person's data anywhere they did not ask for.
-- Your Claude sign-in is stored in this VM; never print or copy credential files.
+- Your AI service sign-in is stored in this VM; never print or copy credential files.
 
 ## Handing results to the person
 

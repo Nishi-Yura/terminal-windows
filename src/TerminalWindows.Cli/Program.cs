@@ -31,8 +31,8 @@ Usage:
   terminal-windows mcp [NAME] [--config] [--sync-outbox]
 
 AI inside the VM:
-  terminal-windows agent-install NAME [--yes]          install Git, Claude Code, desktop MCP and skill in the guest
-  terminal-windows claude NAME [-- ARGS...]            run Claude Code inside the VM, shown in this terminal (Ctrl+] detaches)
+  terminal-windows agent-install NAME [--agent claude|codex|gemini] [--yes]   install an AI CLI + desktop MCP + instructions in the guest
+  terminal-windows claude|codex|gemini NAME [-- ARGS]  run that agent inside the VM, shown in this terminal (Ctrl+] detaches)
   terminal-windows term NAME [--cwd DIR] [-- COMMAND]  a terminal inside the VM (default PowerShell)
   terminal-windows exec NAME SCRIPT [--timeout 300]    run one PowerShell script inside the VM
   terminal-windows tune NAME [--defender] [--yes]      lighter guest: no visual effects/indexing/SysMain, high-perf power
@@ -98,6 +98,8 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "iso-info" => await IsoInfoCommand.RunAsync(parsed),
                 "term" => await Agent.TermAsync(parsed),
                 "claude" => await Agent.ClaudeAsync(parsed),
+                "codex" => await Agent.CodexAsync(parsed),
+                "gemini" => await Agent.GeminiAsync(parsed),
                 "exec" => await Agent.ExecAsync(parsed),
                 "agent-install" => await Agent.InstallAsync(parsed),
                 "tune" => await Tune.RunAsync(parsed),

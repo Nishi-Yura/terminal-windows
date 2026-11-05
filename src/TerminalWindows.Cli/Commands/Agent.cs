@@ -76,15 +76,151 @@ public static class Agent
         return r.ReadToEnd();
     }
 
-    /// <summary>The steps agent-install runs inside the guest (also printed without --yes).</summary>
-    public static IReadOnlyList<(string Title, string Script, int Timeout)> InstallSteps(string user) => new (string, string, int)[]
+    /// <summary>An AI agent CLI that agent-install can set up inside the guest.</summary>
+    public sealed record AgentProfile(
+        string Id,
+        string DisplayName,
+        string Command,
+        string ProbeUrl,
+        IReadOnlyList<(string Title, string Script, int Timeout)> InstallSteps,
+        string InstructionsFile,  // relative to the guest USERPROFILE
+        bool InstructionsAsSkill, // true: write the skill as-is (with front matter); false: plain instructions file
+        string SignInNote);
+
+    public static readonly string[] AgentIds = { "claude", "codex", "gemini" };
+
+    public static AgentProfile Profile(string id) => id.ToLowerInvariant() switch
     {
-        ("Check network access",
-            """
-            try { $r = Invoke-WebRequest -UseBasicParsing -Method Head https://claude.ai -TimeoutSec 30; 'reachable (HTTP ' + [int]$r.StatusCode + ')' }
-            catch { if ($_.Exception.Response) { 'reachable (HTTP ' + [int]$_.Exception.Response.StatusCode + ')' } else { throw "No internet access from the VM (offline mode?): $_" } }
-            """, 60),
-        ("Install Git for Windows (Claude Code on Windows needs Git Bash)",
+        "claude" => new("claude", "Claude Code", "claude", "https://claude.ai",
+            new[] { GitStep, ClaudeStep, ("Register the desktop MCP server (screenshot / click / type inside this VM)",
+                $"""
+                claude mcp remove --scope user desktop 2>$null | Out-Null
+                claude mcp add --scope user desktop -- "{GuestHelperPath}" mcp
+                claude mcp list
+                """, 120) },
+            @".claude\skills\terminal-windows-desktop\SKILL.md", true,
+            "Sign in when Claude Code asks: open the shown URL in your browser and paste the code back."),
+        "codex" => new("codex", "OpenAI Codex CLI", "codex", "https://api.openai.com",
+            new[] { NodeStep, NpmStep("@openai/codex", "codex"), ("Register the desktop MCP server in ~/.codex/config.toml",
+                $$"""
+                $dir = Join-Path $env:USERPROFILE '.codex'
+                New-Item -ItemType Directory -Force $dir | Out-Null
+                $cfg = Join-Path $dir 'config.toml'
+                $text = if (Test-Path $cfg) { Get-Content $cfg -Raw } else { '' }
+                if ($text -notmatch '(?m)^\[mcp_servers\.desktop\]') {
+                  $block = "`n[mcp_servers.desktop]`ncommand = '{{GuestHelperPath}}'`nargs = [""mcp""]`n"
+                  [IO.File]::AppendAllText($cfg, $block, (New-Object Text.UTF8Encoding $false))
+                  'added [mcp_servers.desktop]'
+                } else { 'already configured' }
+                """, 60) },
+            @".codex\AGENTS.md", false,
+            "Sign in when Codex asks (ChatGPT account or OPENAI_API_KEY). Usage may be billed to that account."),
+        "gemini" => new("gemini", "Google Gemini CLI", "gemini", "https://generativelanguage.googleapis.com",
+            new[] { NodeStep, NpmStep("@google/gemini-cli", "gemini"), ("Register the desktop MCP server in ~/.gemini/settings.json",
+                $$"""
+                $dir = Join-Path $env:USERPROFILE '.gemini'
+                New-Item -ItemType Directory -Force $dir | Out-Null
+                $file = Join-Path $dir 'settings.json'
+                $s = if (Test-Path $file) { Get-Content $file -Raw | ConvertFrom-Json } else { New-Object psobject }
+                if (-not $s.PSObject.Properties['mcpServers']) { $s | Add-Member -NotePropertyName mcpServers -NotePropertyValue (New-Object psobject) }
+                $server = [pscustomobject]@{ command = '{{GuestHelperPath}}'; args = @('mcp') }
+                $s.mcpServers | Add-Member -NotePropertyName desktop -NotePropertyValue $server -Force
+                [IO.File]::WriteAllText($file, ($s | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding $false))
+                'mcpServers.desktop registered'
+                """, 60) },
+            @".gemini\GEMINI.md", false,
+            "Sign in when Gemini CLI asks (Google account or GEMINI_API_KEY). Usage limits depend on that account."),
+        _ => throw new UsageException($"Unknown agent '{id}'. Use one of: {string.Join(", ", AgentIds)}"),
+    };
+
+    private static (string, string, int) NpmStep(string package, string command) =>
+        ($"Install {package} (npm)",
+            $$"""
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+            if (-not (Get-Command {{command}} -ErrorAction SilentlyContinue)) {
+              npm install -g {{package}}
+              if ($LASTEXITCODE -ne 0) { throw "npm install failed ($LASTEXITCODE)" }
+            }
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+            if (-not (Get-Command {{command}} -ErrorAction SilentlyContinue)) { throw '{{command}} was not found after installing' }
+            '{{command}} ' + (& {{command}} --version)
+            """, 1500);
+
+    private static readonly (string, string, int) NodeStep = ("Install Node.js LTS (needed by npm-based agents)",
+        """
+        if (Get-Command node -ErrorAction SilentlyContinue) { 'node already installed: ' + (node --version); exit 0 }
+        try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction SilentlyContinue } catch {}
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+          winget install --id OpenJS.NodeJS.LTS -e --source winget --silent --accept-package-agreements --accept-source-agreements --disable-interactivity
+          if ($LASTEXITCODE -eq 0) { 'installed with winget'; exit 0 }
+        }
+        # Fallback: the official MSI of the newest LTS release from nodejs.org.
+        $v = (Invoke-RestMethod -UseBasicParsing https://nodejs.org/dist/index.json | Where-Object { $_.lts } | Select-Object -First 1).version
+        $msi = Join-Path $env:TEMP "node-$v-x64.msi"
+        Invoke-WebRequest -UseBasicParsing "https://nodejs.org/dist/$v/node-$v-x64.msi" -OutFile $msi
+        $p = Start-Process msiexec.exe -ArgumentList '/i', "`"$msi`"", '/qn', '/norestart' -Wait -PassThru
+        'msiexec exit ' + $p.ExitCode
+        exit $p.ExitCode
+        """, 1500);
+
+    private static readonly (string, string, int) ClaudeStep = ("Install Claude Code (official installer)",
+        """
+        if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { irm https://claude.ai/install.ps1 | iex }
+        # The installer may only print "not in your PATH": add %USERPROFILE%\.local\bin to the user PATH.
+        $bin = Join-Path $env:USERPROFILE '.local\bin'
+        $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        if ((Test-Path (Join-Path $bin 'claude.exe')) -and (($userPath -split ';') -notcontains $bin)) {
+          [Environment]::SetEnvironmentVariable('Path', (@($userPath, $bin) | Where-Object { $_ }) -join ';', 'User')
+          'added ' + $bin + ' to the user PATH'
+        }
+        $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+        if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw 'claude.exe was not found after installing' }
+        'claude ' + (claude --version)
+        """, 1500);
+
+    private static string NetworkCheck(string url) =>
+        $$"""
+        try { $r = Invoke-WebRequest -UseBasicParsing -Method Head {{url}} -TimeoutSec 30; 'reachable (HTTP ' + [int]$r.StatusCode + ')' }
+        catch { if ($_.Exception.Response) { 'reachable (HTTP ' + [int]$_.Exception.Response.StatusCode + ')' } else { throw "No internet access from the VM (offline mode?): $_" } }
+        """;
+
+    /// <summary>All steps for one agent: network check, then the agent's own steps.</summary>
+    public static IReadOnlyList<(string Title, string Script, int Timeout)> InstallSteps(string agentId)
+    {
+        var p = Profile(agentId);
+        return new[] { ("Check network access", NetworkCheck(p.ProbeUrl), 60) }.Concat(p.InstallSteps).ToList();
+    }
+
+    /// <summary>Writes the agent's instructions file in the guest (base64, so no quoting issues).</summary>
+    public static string InstructionsScript(AgentProfile p, string skillText)
+    {
+        var text = p.InstructionsAsSkill ? skillText : StripFrontMatter(skillText);
+        var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(text));
+        return $$"""
+            $path = Join-Path $env:USERPROFILE '{{p.InstructionsFile}}'
+            New-Item -ItemType Directory -Force (Split-Path $path) | Out-Null
+            $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('{{b64}}'))
+            $marker = '<!-- terminal-windows-desktop -->'
+            if ({{(p.InstructionsAsSkill ? "$true" : "$false")}}) { [IO.File]::WriteAllText($path, $text, (New-Object Text.UTF8Encoding $false)) }
+            else {
+              # Keep the person's own instructions: replace only our section.
+              $old = if (Test-Path $path) { Get-Content $path -Raw } else { '' }
+              $i = $old.IndexOf($marker)
+              if ($i -ge 0) { $old = $old.Substring(0, $i).TrimEnd() }
+              [IO.File]::WriteAllText($path, ($old + "`n`n" + $marker + "`n" + $text).TrimStart(), (New-Object Text.UTF8Encoding $false))
+            }
+            'wrote ' + $path
+            """;
+    }
+
+    private static string StripFrontMatter(string md)
+    {
+        if (!md.StartsWith("---")) return md;
+        int end = md.IndexOf("\n---", 3, StringComparison.Ordinal);
+        return end < 0 ? md : md[(md.IndexOf('\n', end + 1) + 1)..];
+    }
+
+    private static readonly (string, string, int) GitStep = ("Install Git for Windows (Claude Code on Windows needs Git Bash)",
             """
             if (Get-Command git -ErrorAction SilentlyContinue) { 'git already installed: ' + (git --version); exit 0 }
             try { Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction SilentlyContinue } catch {}
@@ -102,51 +238,30 @@ public static class Agent
             $p = Start-Process $exe -ArgumentList '/VERYSILENT','/NORESTART','/SP-' -Wait -PassThru
             'installer exit ' + $p.ExitCode
             exit $p.ExitCode
-            """, 1500),
-        ("Install Claude Code (official installer)",
-            """
-            if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { irm https://claude.ai/install.ps1 | iex }
-            # The installer may only print "not in your PATH": add %USERPROFILE%\.local\bin to the user PATH.
-            $bin = Join-Path $env:USERPROFILE '.local\bin'
-            $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
-            if ((Test-Path (Join-Path $bin 'claude.exe')) -and (($userPath -split ';') -notcontains $bin)) {
-              [Environment]::SetEnvironmentVariable('Path', (@($userPath, $bin) | Where-Object { $_ }) -join ';', 'User')
-              'added ' + $bin + ' to the user PATH'
-            }
-            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-            if (-not (Get-Command claude -ErrorAction SilentlyContinue)) { throw 'claude.exe was not found after installing' }
-            'claude ' + (claude --version)
-            """, 1500),
-        ("Check Claude Code",
-            "claude --version", 120),
-        ("Register the desktop MCP server (screenshot / click / type inside this VM)",
-            $"""
-            claude mcp remove --scope user desktop 2>$null | Out-Null
-            claude mcp add --scope user desktop -- "{GuestHelperPath}" mcp
-            claude mcp list
-            """, 120),
-    };
+            """, 1500);
 
     public static async Task<int> InstallAsync(ParsedArgs a)
     {
         var m = MachineStore.Load(a.Pos(0, "NAME"));
         bool yes = a.Flag("yes");
+        var agent = Profile(a.Opt("agent") ?? "claude");
         a.RejectUnknown();
-        var steps = InstallSteps(m.User);
+        var steps = InstallSteps(agent.Id);
         if (!yes)
         {
-            Console.WriteLine($"agent-install will run these steps inside {m.Name} (nothing is changed on this PC):");
+            Console.WriteLine($"agent-install will set up {agent.DisplayName} inside {m.Name} (nothing is changed on this PC):");
             foreach (var (title, _, _) in steps) Console.WriteLine("  - " + title);
-            Console.WriteLine($"  - Copy the guest skill to C:\\Users\\{m.User}\\.claude\\skills\\terminal-windows-desktop\\SKILL.md");
+            Console.WriteLine($"  - Write the in-VM instructions to %USERPROFILE%\\{agent.InstructionsFile}");
             Console.WriteLine();
-            Console.WriteLine("It downloads from the internet inside the VM and accepts the winget source/package agreements");
-            Console.WriteLine("(Git for Windows is GPLv2). Claude Code's own terms are shown when you sign in.");
-            Console.WriteLine($"Run again with --yes to proceed:  terminal-windows agent-install {m.Name} --yes");
+            Console.WriteLine("It downloads from the internet inside the VM and accepts the winget source/package agreements.");
+            Console.WriteLine($"{agent.DisplayName}'s own terms are shown when you sign in. {agent.SignInNote}");
+            Console.WriteLine($"Run again with --yes to proceed:  terminal-windows agent-install {m.Name} --agent {agent.Id} --yes");
             return 2;
         }
 
         await using var c = await GuestClient.ConnectAsync(m);
-        foreach (var (title, script, timeout) in steps)
+        var all = steps.Append(("Write the in-VM instructions", InstructionsScript(agent, GuestSkillText()), 60));
+        foreach (var (title, script, timeout) in all)
         {
             Console.Error.WriteLine($"==> {title}");
             var r = await RunScriptAsync(c, script, timeout);
@@ -161,32 +276,17 @@ public static class Agent
             }
         }
 
-        Console.Error.WriteLine("==> Install the guest skill");
-        var tmp = Path.Combine(Path.GetTempPath(), "tw-guest-skill-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(Path.Combine(tmp, "terminal-windows-desktop"));
-        try
-        {
-            await File.WriteAllTextAsync(Path.Combine(tmp, "terminal-windows-desktop", "SKILL.md"), GuestSkillText(), new UTF8Encoding(false));
-            // Ask the guest for its real profile folder instead of assuming C:\Users\<user>.
-            var profile = (await RunScriptAsync(c, "$env:USERPROFILE", 60))["stdout"]?.GetValue<string>()?.Trim();
-            if (string.IsNullOrEmpty(profile)) throw new CliException("Could not read USERPROFILE in the guest.");
-            var skillsDir = Path.Combine(profile, ".claude", "skills");
-            await RunScriptAsync(c, $"Remove-Item -Recurse -Force '{skillsDir}\\terminal-windows-desktop' -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force '{skillsDir}' | Out-Null", 60);
-            await c.PushAsync(Path.Combine(tmp, "terminal-windows-desktop"), skillsDir, TransferLimits.Default);
-        }
-        finally
-        {
-            try { Directory.Delete(tmp, true); } catch { }
-        }
-
         Console.WriteLine();
-        Console.WriteLine($"Claude Code is installed inside {m.Name}. Next:");
-        Console.WriteLine($"  1. terminal-windows snapshot {m.Name} --name agent-ready");
-        Console.WriteLine($"  2. terminal-windows claude {m.Name}");
-        Console.WriteLine("     Sign in yourself when Claude Code asks (open the shown URL in your browser and paste the code back).");
+        Console.WriteLine($"{agent.DisplayName} is installed inside {m.Name}. Next:");
+        Console.WriteLine($"  1. terminal-windows snapshot {m.Name} --name {agent.Id}-ready");
+        Console.WriteLine($"  2. terminal-windows {(agent.Id is "claude" or "codex" or "gemini" ? agent.Id : "term")} {m.Name}");
+        Console.WriteLine("     " + agent.SignInNote);
         Console.WriteLine("     Your sign-in is stored inside the VM, where the agent can read it.");
         return 0;
     }
+
+    public static Task<int> CodexAsync(ParsedArgs a) => OpenTerminalAsync(a, defaultCommand: "codex", prefix: "codex");
+    public static Task<int> GeminiAsync(ParsedArgs a) => OpenTerminalAsync(a, defaultCommand: "gemini", prefix: "gemini");
 
     private static string Indent(string s) => string.Join('\n', s.Split('\n').Select(l => "    " + l.TrimEnd('\r')));
 }

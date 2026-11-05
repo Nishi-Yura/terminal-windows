@@ -164,6 +164,21 @@ terminal-windows claude default
 - サインイン情報は VM の中に保存され、VM の中の AI からも読める状態になります。
 - VM からインターネットに出る必要があります（`--offline` の VM では使えません）。
 
+**Claude 以外の AI も使えます。** `--agent` で入れる AI を選べます。
+
+| AI | インストール | 起動 | 説明書の置き場所 |
+|---|---|---|---|
+| Claude Code（既定） | `agent-install NAME --yes` | `terminal-windows claude NAME` | `~\.claude\skills\terminal-windows-desktop\SKILL.md` |
+| OpenAI Codex CLI | `agent-install NAME --agent codex --yes` | `terminal-windows codex NAME` | `~\.codex\AGENTS.md` |
+| Google Gemini CLI | `agent-install NAME --agent gemini --yes` | `terminal-windows gemini NAME` | `~\.gemini\GEMINI.md` |
+
+- どの AI にも、画面操作用の MCP サーバー `desktop` を登録します。
+- Codex と Gemini は Node.js（npm）で入れます。
+- 説明書がすでにある場合は、あなたの書いた内容を残したまま、terminal-windows の部分だけを追加・更新します。
+- 各サービスの料金と利用条件は、それぞれのアカウントの契約に従います。
+
+それ以外の AI CLI も、`terminal-windows term NAME -- コマンド` で VM の中で動かせます。
+
 ---
 
 ## よく使うコマンド
