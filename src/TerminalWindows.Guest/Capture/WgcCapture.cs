@@ -39,6 +39,9 @@ public sealed class WgcCapture : IScreenCapture
     private readonly ManualResetEventSlim _firstFrame = new(false);
     private ID3D11Texture2D? _latest;
     private bool _disposed;
+    private long _frameSeq;          // incremented for every frame WGC delivers
+    private long _cachedSeq = -1;
+    private BgraImage? _cached;      // CPU copy of the frame with sequence _cachedSeq
     private Windows.Graphics.SizeInt32 _poolSize;
 
     public WgcCapture()
@@ -96,6 +99,7 @@ public sealed class WgcCapture : IScreenCapture
                 _d3d.Context.CopyResource(_latest, tex);
             }
             if (_disposed) return;
+            Interlocked.Increment(ref _frameSeq);
             _firstFrame.Set();
 
             if (frame.ContentSize.Width != _poolSize.Width || frame.ContentSize.Height != _poolSize.Height)
@@ -116,7 +120,13 @@ public sealed class WgcCapture : IScreenCapture
         lock (_gpuLock)
         {
             if (_disposed || _latest is null) throw new ObjectDisposedException(nameof(WgcCapture));
-            return _d3d.Read(_latest);
+            // WGC only delivers frames when the screen changes: if nothing new arrived, reuse the last
+            // CPU copy instead of reading the whole texture back from the GPU again.
+            long seq = Interlocked.Read(ref _frameSeq);
+            if (_cached is not null && seq == _cachedSeq) return _cached;
+            _cached = _d3d.Read(_latest);
+            _cachedSeq = seq;
+            return _cached;
         }
     }
 

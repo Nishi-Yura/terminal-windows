@@ -345,6 +345,7 @@ public sealed class HelperServer
     private async Task StreamLoopAsync(RpcServerSession session, int width, int height, int fps, CancellationToken ct)
     {
         ulong last = 0;
+        BgraImage? lastSource = null; // the capture backends return the same object while the screen is unchanged
         var interval = TimeSpan.FromMilliseconds(1000.0 / fps);
         while (!ct.IsCancellationRequested)
         {
@@ -352,6 +353,8 @@ public sealed class HelperServer
             try
             {
                 var img = _capture.Capture();
+                if (ReferenceEquals(img, lastSource)) { await Task.Delay(interval, ct).ContinueWith(_ => { }); continue; }
+                lastSource = img;
                 var (w, h) = Imaging.Fit(img.Width, img.Height, width, height);
                 var small = Imaging.Resize(img, w, h);
                 var fp = Imaging.Fingerprint(small);
