@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "terminal-windows": {
+      "command": "terminal-windows",
+      "args": ["mcp", "default"]
+    }
+  }
+}

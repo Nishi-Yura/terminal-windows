@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Guest helper. Runs ONLY inside the VirtualBox VM, in the interactive session of the auto-logon
+    user, started by Task Scheduler with highest privileges. It refuses to start on a non-VirtualBox machine.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>TerminalWindowsGuest</AssemblyName>
+    <RootNamespace>TerminalWindows.Guest</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- UseWPF trims System.IO from implicit usings; WPF is only used for UIAutomationClient. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\TerminalWindows.Protocol\TerminalWindows.Protocol.csproj" />
+  </ItemGroup>
+</Project>

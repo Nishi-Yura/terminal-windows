@@ -1,0 +1,121 @@
+using System.Text;
+using TerminalWindows.Cli.Commands;
+using TerminalWindows.Cli.Infrastructure;
+
+namespace TerminalWindows.Cli;
+
+public static class Program
+{
+    public const string Usage = """
+terminal-windows - an AI-dedicated Windows VM (VirtualBox) you can watch in the terminal and drive via MCP.
+AI actions only affect the VM; the host's mouse, keyboard and clipboard are never touched.
+
+Usage:
+  terminal-windows up [NAME] [--iso PATH] [--no-view] [--detach] [--plan] [create options]
+  terminal-windows create NAME --iso PATH [--cpus 4] [--memory 8] [--disk 64] [--width 1600] [--height 900]
+                          [--offline] [--locale ja-JP] [--ui-language ja-JP] [--timezone TZ]
+                          [--edition Pro] [--image-index N] [--product-key KEY] [--auto-snapshot] [--share PATH [--share-writable]]
+  terminal-windows start|pause|resume NAME
+  terminal-windows stop NAME [--shutdown | --force] [--auto-snapshot]   (default: save state)
+  terminal-windows view NAME [--graphics sixel|kitty|none]
+  terminal-windows view-demo [--graphics sixel|kitty]   (viewer check without a VM; input is only logged)
+  terminal-windows show|hide NAME
+  terminal-windows ls
+  terminal-windows status NAME
+  terminal-windows snapshot NAME [--name LABEL] | restore NAME LABEL | snapshots NAME
+  terminal-windows pull NAME [GUEST_PATH] [--to HOST_DIR] [--sync-outbox]
+  terminal-windows push NAME HOST_PATH [--to GUEST_DIR]
+  terminal-windows notes NAME [--edit]
+  terminal-windows clone NAME NEW [--from-snapshot LABEL]
+  terminal-windows action NAME <screenshot|click|double_click|right_click|drag|scroll|type|key|ui_tree|status> ...
+  terminal-windows mcp [NAME] [--config] [--sync-outbox]
+  terminal-windows skills install [--dir PATH] | skills get
+  terminal-windows update-helper NAME
+  terminal-windows iso-info ISO [--edition NAME]      (list editions; create picks Pro by default)
+  terminal-windows selftest NAME [--with-restore]      (real-VM checklist; writes logsselftest-*.md)
+  terminal-windows doctor [--json]
+
+Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WINDOWS_HOME).
+""";
+
+    private static readonly string[] Flags =
+    {
+        "offline", "auto-snapshot", "share-writable", "no-view", "detach", "plan", "shutdown", "force",
+        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore",
+    };
+
+    public static async Task<int> Main(string[] args)
+    {
+        Console.OutputEncoding = new UTF8Encoding(false);
+        if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
+        {
+            Console.WriteLine(Usage);
+            return args.Length == 0 ? 1 : 0;
+        }
+        if (args[0] is "--version" or "version")
+        {
+            Console.WriteLine(typeof(Program).Assembly.GetName().Version?.ToString(3));
+            return 0;
+        }
+
+        try
+        {
+            var parsed = ParsedArgs.Parse(args.Skip(1), Flags);
+            if (parsed.Flag("verbose")) ProcessRunner.Verbose = true;
+            return args[0] switch
+            {
+                "up" => await Lifecycle.UpAsync(parsed),
+                "create" => await Lifecycle.CreateAsync(parsed),
+                "start" => await Lifecycle.StartAsync(parsed),
+                "pause" => await Lifecycle.PauseResumeAsync(parsed, pause: true),
+                "resume" => await Lifecycle.PauseResumeAsync(parsed, pause: false),
+                "stop" => await Lifecycle.StopAsync(parsed),
+                "view" => await Lifecycle.ViewAsync(parsed),
+                "show" => await Lifecycle.ShowHideAsync(parsed, show: true),
+                "hide" => await Lifecycle.ShowHideAsync(parsed, show: false),
+                "ls" or "list" => await Lifecycle.ListAsync(parsed),
+                "status" => await Lifecycle.StatusAsync(parsed),
+                "snapshot" => await SnapshotCommands.SnapshotAsync(parsed),
+                "restore" => await SnapshotCommands.RestoreAsync(parsed),
+                "snapshots" => await SnapshotCommands.ListAsync(parsed),
+                "clone" => await SnapshotCommands.CloneAsync(parsed),
+                "update-helper" => await SnapshotCommands.UpdateHelperAsync(parsed),
+                "refresh-payload" => await SnapshotCommands.RefreshPayloadAsync(parsed),
+                "pull" => await Transfer.PullAsync(parsed),
+                "push" => await Transfer.PushAsync(parsed),
+                "notes" => await Notes.RunAsync(parsed),
+                "action" => await ActionCommand.RunAsync(parsed),
+                "mcp" => await McpCommand.RunAsync(parsed),
+                "skills" => await SkillsCommand.RunAsync(parsed),
+                "doctor" => await Doctor.RunAsync(parsed),
+                "iso-info" => await IsoInfoCommand.RunAsync(parsed),
+                "selftest" => await SelfTest.RunAsync(parsed),
+                "view-demo" => await Viewer.DemoGuest.RunAsync(parsed),
+                _ => throw new UsageException($"Unknown command '{args[0]}'"),
+            };
+        }
+        catch (UsageException ex)
+        {
+            Console.Error.WriteLine("error: " + ex.Message);
+            Console.Error.WriteLine("Run 'terminal-windows --help' for usage.");
+            return 2;
+        }
+        catch (CliException ex)
+        {
+            WriteError(ex.Message);
+            return 1;
+        }
+        catch (Exception ex) when (ex is Protocol.RpcException or FormatException or ArgumentException or IOException or TimeoutException)
+        {
+            WriteError(ex.Message);
+            return 1;
+        }
+    }
+
+    private static void WriteError(string message)
+    {
+        // Actions promise JSON output; errors are JSON on stdout too, plus a readable line on stderr.
+        Console.Error.WriteLine("error: " + message);
+        Console.WriteLine(new System.Text.Json.Nodes.JsonObject { ["ok"] = false, ["error"] = message }.ToJsonString(Output.Compact));
+    }
+}
