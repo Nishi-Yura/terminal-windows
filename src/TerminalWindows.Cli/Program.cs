@@ -12,7 +12,7 @@ AI actions only affect the VM; the host's mouse, keyboard and clipboard are neve
 
 Usage:
   terminal-windows up [NAME] [--iso PATH] [--no-view] [--detach] [--plan] [create options]
-  terminal-windows create NAME --iso PATH [--cpus 4] [--memory 8] [--disk 64] [--width 1600] [--height 900]
+  terminal-windows create NAME --iso PATH [--cpus 4 (2 with Hyper-V)] [--memory 8] [--disk 64] [--width 1600] [--height 900]
                           [--offline] [--locale ja-JP] [--ui-language ja-JP] [--timezone TZ]
                           [--edition Pro] [--image-index N] [--product-key KEY] [--auto-snapshot] [--share PATH [--share-writable]]
   terminal-windows start|pause|resume NAME
@@ -21,6 +21,7 @@ Usage:
   terminal-windows view-demo [--graphics sixel|kitty]   (viewer check without a VM; input is only logged)
   terminal-windows show|hide NAME
   terminal-windows ls
+  terminal-windows delete NAME --yes                   (deletes the VM, its disk, snapshots and folder)
   terminal-windows status NAME
   terminal-windows snapshot NAME [--name LABEL] | restore NAME LABEL | snapshots NAME
   terminal-windows pull NAME [GUEST_PATH] [--to HOST_DIR] [--sync-outbox]
@@ -80,6 +81,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "view" => await Lifecycle.ViewAsync(parsed),
                 "show" => await Lifecycle.ShowHideAsync(parsed, show: true),
                 "hide" => await Lifecycle.ShowHideAsync(parsed, show: false),
+                "delete" => await Lifecycle.DeleteAsync(parsed),
                 "ls" or "list" => await Lifecycle.ListAsync(parsed),
                 "status" => await Lifecycle.StatusAsync(parsed),
                 "snapshot" => await SnapshotCommands.SnapshotAsync(parsed),

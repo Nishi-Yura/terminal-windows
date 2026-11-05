@@ -10,7 +10,7 @@ public static class Lifecycle
     private static CreateOptions ReadCreateOptions(ParsedArgs a, string name, string? iso) => new(
         name,
         iso ?? "",
-        Cpus: a.Int("cpus", 4),
+        Cpus: a.Int("cpus", DefaultCpus()),
         MemoryGb: a.Int("memory", DefaultMemoryGb()),
         DiskGb: a.Int("disk", 64),
         Width: a.Int("width", 1600),
@@ -28,6 +28,33 @@ public static class Lifecycle
 
     /// <summary>8 GB for the guest on 16 GB+ hosts, 6 GB below that (the spec allows 6-8 GB).</summary>
     public static int DefaultMemoryGb() => Doctor.TotalMemoryGb() >= 15.9 ? 8 : 6;
+
+    /// <summary>
+    /// 4 vCPUs normally, 2 when a Windows hypervisor is active: under the Windows Hypervisor Platform a
+    /// 4-vCPU guest fell hours behind on its timers and hung mid-install (real run), while fewer vCPUs
+    /// keep the guest schedulable. --cpus still overrides.
+    /// </summary>
+    public static int DefaultCpus() => DefaultCpusFor(Doctor.HypervisorPresent(), Environment.ProcessorCount);
+
+    public static int DefaultCpusFor(bool hypervisorActive, int hostLogicalCpus) =>
+        Math.Max(1, Math.Min(hypervisorActive ? 2 : 4, hostLogicalCpus / 2));
+
+    public static async Task<int> DeleteAsync(ParsedArgs a)
+    {
+        var name = a.Pos(0, "NAME");
+        bool yes = a.Flag("yes");
+        a.RejectUnknown();
+        var m = MachineStore.Load(name);
+        if (!yes)
+        {
+            Console.WriteLine($"This permanently deletes {m.Name} ({m.VmName}): its disk, snapshots, notes, inbox and outbox.");
+            Console.WriteLine($"Nothing was changed. Re-run with --yes to delete:  terminal-windows delete {m.Name} --yes");
+            return 1;
+        }
+        await new MachineManager().DeleteAsync(m);
+        Console.WriteLine($"Deleted {m.Name}.");
+        return 0;
+    }
 
     public static readonly string[] CreateFlags = { "offline", "auto-snapshot", "share-writable", "no-view", "detach", "plan" };
 

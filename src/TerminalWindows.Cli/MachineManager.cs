@@ -388,6 +388,31 @@ public sealed class MachineManager
         if (autoSnapshot || m.AutoSnapshot) await AutoSnapshotAsync(m);
     }
 
+    /// <summary>Powers the VM off, unregisters it with its disks and snapshots, and removes the machine folder.</summary>
+    public async Task DeleteAsync(MachineConfig m)
+    {
+        var state = await _backend.GetStateAsync(m.VmName);
+        if (state is VmState.Running or VmState.Paused)
+        {
+            _log($"Powering off {m.VmName}...");
+            await _backend.PowerOffAsync(m.VmName);
+            for (int i = 0; i < 60 && await _backend.GetStateAsync(m.VmName) is VmState.Running or VmState.Paused; i++)
+                await Task.Delay(1000);
+            await Task.Delay(2000); // the VM process releases its disk locks just after the state flips
+        }
+        if (state is not VmState.NotFound && _backend is VirtualBoxBackend vb)
+        {
+            _log($"Unregistering {m.VmName} and deleting its disks...");
+            await vb.UnregisterAndDeleteAsync(m.VmName);
+        }
+        var dir = MachineStore.MachineDir(m.Name);
+        for (int attempt = 0; ; attempt++)
+        {
+            try { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); break; }
+            catch (Exception ex) when ((ex is IOException or UnauthorizedAccessException) && attempt < 10) { await Task.Delay(1000); }
+        }
+    }
+
     public async Task AutoSnapshotAsync(MachineConfig m)
     {
         var label = "auto-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
