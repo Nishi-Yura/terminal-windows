@@ -44,7 +44,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1 -Test
 powershell -ExecutionPolicy Bypass -File install.ps1 -Skill -Mcp
 ```
 
-`%LOCALAPPDATA%\Programs\terminal-windows` にコピーし、ユーザーの PATH に追加します。PATH に入れずにフルパスで実行する場合、PowerShell では先頭に `&` が必要です（例: `& "C:\…\dist\terminal-windows.exe" doctor`）。`-Skill` を付けると Claude Code のスキルを入れ、`-Mcp` を付けると `claude mcp add` で登録します。
+`%USERPROFILE%\.terminal-windows\bin` にコピーし、ユーザーの PATH に追加します（AppData は、パッケージ化されたアプリから見ると別の場所に振り替えられるため使いません）。PATH に入れずにフルパスで実行する場合、PowerShell では先頭に `&` が必要です（例: `& "C:\…\dist\terminal-windows.exe" doctor`）。`-Skill` を付けると Claude Code のスキルを入れ、`-Mcp` を付けると `claude mcp add` で登録します。
 
 ## ISO の用意
 
