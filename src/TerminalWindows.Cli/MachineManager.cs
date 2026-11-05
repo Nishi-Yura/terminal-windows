@@ -235,6 +235,10 @@ public sealed class MachineManager
 
     public async Task WaitForHelperAsync(MachineConfig m, TimeSpan timeout, bool installing = false)
     {
+        // An idle-sleep during Windows Setup breaks the install (seen in a real run), so keep the
+        // machine awake while we wait. This is a per-process request (like a video player), not a
+        // settings change; Windows drops it when this process exits.
+        using var awake = installing ? new KeepAwake() : null;
         var sw = Stopwatch.StartNew();
         var lastReport = TimeSpan.Zero;
         string lastScreenHash = "";
