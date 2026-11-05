@@ -241,6 +241,42 @@ public static class SelfTest
             try { Directory.Delete(tmp, true); } catch { }
         }
 
+        await Check("exec (PowerShell in the guest)", async () =>
+        {
+            var r = await c.CallAsync("exec", new JsonObject { ["script"] = "$PSVersionTable.PSVersion.ToString(); whoami; exit 7", ["timeout_s"] = 60 }, TimeSpan.FromSeconds(90));
+            if (r["exitCode"]?.GetValue<int>() != 7) throw new Exception($"exit code {r["exitCode"]} (expected 7): {r["stderr"]}");
+            return (r["stdout"]?.GetValue<string>() ?? "").Trim().Replace("\r\n", " / ");
+        });
+
+        await Check("pseudo console (agent terminal)", async () =>
+        {
+            var output = new StringBuilder();
+            var exited = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int id = -1;
+            var early = new List<Protocol.Message>();
+            void OnEvent(Protocol.Message m)
+            {
+                if (m.Event == "pty_output") lock (output) output.Append(Encoding.UTF8.GetString(m.Attachments[0]));
+                if (m.Event == "pty_exit") exited.TrySetResult(m.Json["data"]!["exitCode"]!.GetValue<int>());
+            }
+            c.Rpc.EventReceived += m =>
+            {
+                if (m.Event is not ("pty_output" or "pty_exit")) return;
+                lock (early) { if (id < 0) { early.Add(m); return; } }
+                if ((m.Json["data"] as JsonObject)?["id"]?.GetValue<int>() == id) OnEvent(m);
+            };
+            var opened = await c.CallAsync("pty_open", new JsonObject { ["command"] = "cmd /c echo tw-pty-ok", ["cols"] = 80, ["rows"] = 24 });
+            lock (early)
+            {
+                id = opened["id"]!.GetValue<int>();
+                foreach (var m in early.Where(m => (m.Json["data"] as JsonObject)?["id"]?.GetValue<int>() == id)) OnEvent(m);
+            }
+            await exited.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            lock (output)
+                if (!output.ToString().Contains("tw-pty-ok")) throw new Exception("program output did not arrive");
+            return "output and exit received";
+        });
+
         await Check("lock screen is reported", () =>
             Task.FromResult("WARN: not automated (locking needs a manual unlock). Manual: press Win+L in the VM window, then 'terminal-windows status' must show locked_or_secure_desktop"));
 
