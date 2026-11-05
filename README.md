@@ -28,6 +28,22 @@ AI エージェント専用の「もう 1 台の Windows PC」を VirtualBox の
 
 WSL2、Docker Desktop、「仮想マシン プラットフォーム」、メモリ整合性などが有効だと、VirtualBox は Windows Hypervisor Platform を経由して動きます。**動作はしますが遅くなります。** `doctor` はこの状態を検出して警告を出すだけで、設定は変更しません。
 
+### 速くしたいとき
+
+1. **ホストのハイパーバイザーをオフにする（効果：大）**
+   - 管理者のターミナルで `bcdedit /set hypervisorlaunchtype off` を実行し、再起動します。元に戻すときは `bcdedit /set hypervisorlaunchtype auto` です。
+   - オフの間は WSL2 と Docker Desktop が使えません。メモリ整合性もオフにする必要があり、ホストのセキュリティが下がります。
+   - ご自身で判断して実行してください。VM のセットアップ中は再起動しないでください。
+2. **VM の CPU を増やす:** 新しく作るときは `--cpus 6` のように指定します。既存の VM は、止めた状態で `VBoxManage modifyvm twin-NAME --cpus 6` を実行します。
+3. **VM の中を軽くする:** 次のコマンドで、VM の中だけの設定を変えます。
+   ```bash
+   terminal-windows tune default --yes
+   ```
+   - 変更するもの：視覚効果、検索インデックス、SysMain、バックグラウンドアプリ、電源プラン（高パフォーマンス）。
+   - `--defender` を付けると、Microsoft Defender のスキャン対象からシステムドライブを外します。VM の中の保護が弱まるので、使い捨て VM でのみ使ってください。
+   - 先に `snapshot` を取っておくと安心です。
+4. **解像度を下げる:** `--width 1280 --height 800` のように指定すると、画面取得とビューアの負荷が減ります。
+
 ## ビルド
 
 .NET SDK 8 以上が必要です。

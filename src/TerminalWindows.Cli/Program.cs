@@ -35,6 +35,7 @@ AI inside the VM:
   terminal-windows claude NAME [-- ARGS...]            run Claude Code inside the VM, shown in this terminal (Ctrl+] detaches)
   terminal-windows term NAME [--cwd DIR] [-- COMMAND]  a terminal inside the VM (default PowerShell)
   terminal-windows exec NAME SCRIPT [--timeout 300]    run one PowerShell script inside the VM
+  terminal-windows tune NAME [--defender] [--yes]      lighter guest: no visual effects/indexing/SysMain, high-perf power
   terminal-windows skills install [--dir PATH] | skills get
   terminal-windows update-helper NAME
   terminal-windows iso-info ISO [--edition NAME]      (list editions; create picks Pro by default)
@@ -47,7 +48,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
     private static readonly string[] Flags =
     {
         "offline", "auto-snapshot", "share-writable", "no-view", "detach", "plan", "shutdown", "force",
-        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes",
+        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes", "defender",
     };
 
     public static async Task<int> Main(string[] args)
@@ -99,6 +100,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "claude" => await Agent.ClaudeAsync(parsed),
                 "exec" => await Agent.ExecAsync(parsed),
                 "agent-install" => await Agent.InstallAsync(parsed),
+                "tune" => await Tune.RunAsync(parsed),
                 "selftest" => await SelfTest.RunAsync(parsed),
                 "view-demo" => await Viewer.DemoGuest.RunAsync(parsed),
                 _ => throw new UsageException($"Unknown command '{args[0]}'"),
