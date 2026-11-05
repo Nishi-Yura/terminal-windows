@@ -55,31 +55,19 @@ switch (mode)
             return 3;
         }
 
-        // Setup gate: serve only once the installer has finished AND the machine has rebooted since.
-        // (The scheduled task's repeating trigger can fire while FirstLogonCommands are still running.)
-        string phase;
-        DateTime stateTime;
-        try
-        {
-            var state = JsonNode.Parse(File.ReadAllText(GuestPaths.StateFile));
-            phase = state?["phase"]?.GetValue<string>() ?? "";
-            stateTime = DateTime.Parse(state?["time"]?.GetValue<string>() ?? "", null, System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime();
-        }
-        catch
-        {
-            phase = "";
-            stateTime = DateTime.MinValue;
-        }
+        string? stateJson = null;
+        try { stateJson = File.ReadAllText(GuestPaths.StateFile); } catch { }
         var bootTime = DateTime.UtcNow - TimeSpan.FromMilliseconds(Environment.TickCount64);
-        if (phase == "installed" && bootTime > stateTime)
+        var gate = SetupGate.Decide(stateJson, bootTime);
+        if (gate == SetupGateDecision.CompleteNowAndServe)
         {
             // First start after the post-install reboot: apply the requested resolution once.
             try { HelperServer.SetResolution(config.Width, config.Height); } catch (Exception ex) { Log.Write("resolution: " + ex.Message); }
             Installer.WriteState("complete");
         }
-        else if (phase != "complete")
+        else if (gate == SetupGateDecision.Wait)
         {
-            Log.Write($"setup not finished (phase '{phase}', boot {bootTime:o}, state {stateTime:o}); not serving yet");
+            Log.Write($"setup not finished (state {stateJson ?? "missing"}, boot {bootTime:o}); not serving yet");
             return 0;
         }
 

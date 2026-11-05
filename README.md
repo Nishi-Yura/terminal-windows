@@ -124,6 +124,7 @@ terminal-windows start default
 
 - `stop` は既定で状態保存（savestate）します。開いているアプリはそのまま残り、`start` で続きから再開できます。OS をシャットダウンしたい場合は `--shutdown`、電源を強制的に切りたい場合は `--force` を付けます。
 - ビューアでは **Ctrl+G** で Windows のショートカット一覧（Win キー、Win+R、Alt+Tab など）を開き、**Ctrl+]** で終了します。ビューアを閉じても VM は動き続けます。
+- ビューアのマウス操作（押す・動かす・離す）は、その場でゲストに送られます。ダブルクリックやトリプルクリックは Windows 自身が判定し、ドラッグ中の動きもそのまま見えます。ゲストのヘルパーが古い場合は、ボタンを離したときにクリックかドラッグとしてまとめて送る方式に自動で切り替わります（`terminal-windows update-helper NAME` で更新できます）。
 - 用途ごとに VM を分けられます（例: `up unity`、`up web`）。セットアップ済みの状態から複製したい場合は `clone default web2 --from-snapshot clean-setup` を使います（リンククローン）。
 
 全コマンドの一覧は `terminal-windows --help` で確認できます。

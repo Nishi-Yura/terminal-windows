@@ -24,6 +24,10 @@ public sealed class DemoGuest : IAsyncDisposable
     private readonly ConcurrentQueue<(int X, int Y, string Label)> _marks = new();
     private readonly object _renderLock = new();
     private int _frame;
+    private (int X, int Y)? _pointer;
+    private DateTime _lastDown = DateTime.MinValue;
+    private (int X, int Y) _lastDownAt;
+    private int _clickRun;
 
     public MachineConfig Machine { get; private set; } = null!;
 
@@ -103,6 +107,34 @@ public sealed class DemoGuest : IAsyncDisposable
                 Record($"click ({I("x")},{I("y")}) {S("button")}");
                 Mark(I("x"), I("y"), $"{S("button")} ({I("x")},{I("y")})");
                 break;
+            case "mouse":
+            {
+                int x = I("x"), y = I("y");
+                var action = S("action");
+                if (action == "move")
+                {
+                    _pointer = (x, y); // drawn as a live cursor; not logged (would flood the log)
+                    break;
+                }
+                _pointer = (x, y);
+                if (action == "down")
+                {
+                    // Same rule Windows uses: second press within 500 ms and a few pixels = double click.
+                    var now = DateTime.UtcNow;
+                    bool isDouble = (now - _lastDown).TotalMilliseconds < 500 && Math.Abs(x - _lastDownAt.X) < 8 && Math.Abs(y - _lastDownAt.Y) < 8;
+                    _clickRun = isDouble ? _clickRun + 1 : 1;
+                    _lastDown = now;
+                    _lastDownAt = (x, y);
+                    var kind = _clickRun switch { 2 => " (double click)", 3 => " (triple click)", _ => "" };
+                    Record($"down ({x},{y}) {S("button")}{kind}");
+                    Mark(x, y, $"{S("button")} ({x},{y}){kind}");
+                }
+                else
+                {
+                    Record($"up ({x},{y}) {S("button")}");
+                }
+                break;
+            }
             case "drag":
                 Record($"drag ({I("x1")},{I("y1")}) -> ({I("x2")},{I("y2")})");
                 Mark(I("x2"), I("y2"), "drag end");
@@ -193,6 +225,13 @@ public sealed class DemoGuest : IAsyncDisposable
                     Fill(dc, x, y - 15, 2, 31, 0x003030FF);
                     SetTextColor(dc, 0x008080FF);
                     Text(dc, x + 8, y + 6, label);
+                }
+
+                // Live pointer (real-time mouse mode)
+                if (_pointer is { } ptr)
+                {
+                    Fill(dc, ptr.X - 6, ptr.Y - 6, 12, 12, 0x0000FFFF);
+                    Fill(dc, ptr.X - 3, ptr.Y - 3, 6, 6, 0x00000000);
                 }
 
                 // Event log

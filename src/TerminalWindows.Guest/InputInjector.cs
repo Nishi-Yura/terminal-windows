@@ -58,6 +58,14 @@ public static class InputInjector
 
     public static void Move(int x, int y) => Send(MoveTo(x, y));
 
+    /// <summary>Presses or releases a button at (x, y). Used by the viewer to forward mouse events in real
+    /// time, so Windows itself detects double/triple clicks and shows drags as they happen.</summary>
+    public static void Button(int x, int y, string button, bool down)
+    {
+        var (d, u) = ButtonFlags(button);
+        Send(MoveTo(x, y), Mouse(down ? d : u));
+    }
+
     public static async Task ClickAsync(int x, int y, string button = "left", int count = 1)
     {
         if (count is < 1 or > 3) throw new ArgumentOutOfRangeException(nameof(count), "count must be 1-3");

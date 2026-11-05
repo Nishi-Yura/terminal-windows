@@ -129,6 +129,8 @@ public sealed class TerminalViewer
 
             DrawStatus(Write, null);
             (int Col, int Row, bool Moved)? press = null;
+            string? heldButton = null;
+            (int X, int Y) lastGuest = (0, 0);
             bool paletteOpen = false;
             while (true)
             {
@@ -182,6 +184,33 @@ public sealed class TerminalViewer
                             if (ToGuest(m.Col, m.Row) is { } wp)
                                 await Send(control, "scroll", new JsonObject { ["x"] = wp.X, ["y"] = wp.Y, ["dy"] = m.Wheel * 3, ["dx"] = m.WheelX * 3 }, Write);
                             break;
+                        // Real-time mode: press / move / release are forwarded as they happen, so Windows
+                        // itself detects double/triple clicks and drags are visible while in progress.
+                        case MouseInput m when _realtimeMouse && m.Pressed && !m.Motion:
+                            if (ToGuest(m.Col, m.Row) is { } down)
+                            {
+                                heldButton = ButtonName(m.Button);
+                                lastGuest = down;
+                                if (!await SendMouse(control, "down", down, heldButton, Write)) press = (m.Col, m.Row, false);
+                            }
+                            break;
+                        case MouseInput m when _realtimeMouse && m.Motion && heldButton is not null:
+                            if (ToGuest(m.Col, m.Row) is { } mv && mv != lastGuest)
+                            {
+                                lastGuest = mv;
+                                await SendMouse(control, "move", mv, heldButton, Write);
+                            }
+                            break;
+                        case MouseInput m when _realtimeMouse && !m.Pressed && heldButton is not null:
+                        {
+                            // Releasing outside the image still releases, at the last position inside it.
+                            var up = ToGuest(m.Col, m.Row) ?? lastGuest;
+                            await SendMouse(control, "up", up, heldButton, Write);
+                            heldButton = null;
+                            break;
+                        }
+
+                        // Legacy mode (helpers older than the 'mouse' op): one click or drag on release.
                         case MouseInput m when m.Pressed && !m.Motion:
                             press = (m.Col, m.Row, false);
                             break;
@@ -191,7 +220,7 @@ public sealed class TerminalViewer
                         case MouseInput m when !m.Pressed:
                             if (press is { } p && ToGuest(m.Col, m.Row) is { } end)
                             {
-                                var button = m.Button switch { 1 => "middle", 2 => "right", _ => "left" };
+                                var button = ButtonName(m.Button);
                                 if (p.Moved && ToGuest(p.Col, p.Row) is { } start)
                                     await Send(control, "drag", new JsonObject { ["x1"] = start.X, ["y1"] = start.Y, ["x2"] = end.X, ["y2"] = end.Y, ["button"] = button }, Write);
                                 else
@@ -242,6 +271,32 @@ public sealed class TerminalViewer
         int x = (int)((col - 0.5) / _imgCols * sw);
         int y = (int)((row - 0.5) / _imgRows * sh);
         return (Math.Clamp(x, 0, sw - 1), Math.Clamp(y, 0, sh - 1));
+    }
+
+    private bool _realtimeMouse = true;
+
+    private static string ButtonName(int b) => b switch { 1 => "middle", 2 => "right", _ => "left" };
+
+    /// <summary>Sends a real-time mouse event. Returns false (and switches to legacy click/drag mode)
+    /// if the guest helper is too old to know the 'mouse' op.</summary>
+    private async Task<bool> SendMouse(GuestClient c, string action, (int X, int Y) at, string button, Action<string> write)
+    {
+        try
+        {
+            await c.CallAsync("mouse", new JsonObject { ["action"] = action, ["x"] = at.X, ["y"] = at.Y, ["button"] = button }, TimeSpan.FromSeconds(15));
+            return true;
+        }
+        catch (RpcException ex) when (ex.Message.Contains("Unknown op"))
+        {
+            _realtimeMouse = false;
+            DrawStatus(write, "guest helper is older: using click-on-release mode (run 'terminal-windows update-helper')");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            DrawStatus(write, "error: " + ex.Message);
+            return true;
+        }
     }
 
     private async Task Send(GuestClient c, string op, JsonObject args, Action<string> write)

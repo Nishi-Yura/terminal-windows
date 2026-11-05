@@ -20,6 +20,7 @@ public sealed class HelperServer
     private readonly GuestFiles _files;
     private readonly SelfUpdater _updater = new();
     private readonly ConcurrentDictionary<RpcServerSession, CancellationTokenSource> _streams = new();
+    private readonly ConcurrentDictionary<RpcServerSession, ConcurrentDictionary<string, byte>> _heldButtons = new();
     private readonly string _version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0";
     private readonly string _selfSha;
 
@@ -92,6 +93,19 @@ public sealed class HelperServer
                     finally
                     {
                         if (_streams.TryRemove(session, out var cts)) cts.Cancel();
+                        if (_heldButtons.TryRemove(session, out var held))
+                        {
+                            // Never leave a button pressed in the guest because the viewer went away.
+                            foreach (var b in held.Keys)
+                            {
+                                try
+                                {
+                                    Native.GetCursorPos(out var p);
+                                    InputInjector.Button(p.X, p.Y, b, down: false);
+                                }
+                                catch (Exception ex) { Log.Write("release held button: " + ex.Message); }
+                            }
+                        }
                         if (!session.Authenticated) Log.Write($"dropped unauthenticated connection from {remote}");
                     }
                 }
@@ -152,6 +166,34 @@ public sealed class HelperServer
                 RequireDesktop();
                 InputInjector.Move(I(a, "x"), I(a, "y"));
                 return Reply.Of(new JsonObject { ["done"] = true });
+
+            case "mouse":
+            {
+                // Real-time button events from the viewer. Buttons still held when the session ends
+                // are released automatically (see the session cleanup in Accept).
+                RequireDesktop();
+                var action = S(a, "action");
+                var button = S(a, "button", "left");
+                int x = I(a, "x"), y = I(a, "y");
+                var held = _heldButtons.GetOrAdd(session, _ => new ConcurrentDictionary<string, byte>());
+                switch (action)
+                {
+                    case "down":
+                        InputInjector.Button(x, y, button, down: true);
+                        held[button] = 0;
+                        break;
+                    case "up":
+                        InputInjector.Button(x, y, button, down: false);
+                        held.TryRemove(button, out _);
+                        break;
+                    case "move":
+                        InputInjector.Move(x, y);
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown mouse action '{action}'");
+                }
+                return Reply.Of(new JsonObject { ["done"] = true });
+            }
 
             case "drag":
                 RequireDesktop();
