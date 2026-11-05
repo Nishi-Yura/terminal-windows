@@ -29,6 +29,12 @@ Usage:
   terminal-windows clone NAME NEW [--from-snapshot LABEL]
   terminal-windows action NAME <screenshot|click|double_click|right_click|drag|scroll|type|key|ui_tree|status> ...
   terminal-windows mcp [NAME] [--config] [--sync-outbox]
+
+AI inside the VM:
+  terminal-windows agent-install NAME [--yes]          install Git, Claude Code, desktop MCP and skill in the guest
+  terminal-windows claude NAME [-- ARGS...]            run Claude Code inside the VM, shown in this terminal (Ctrl+] detaches)
+  terminal-windows term NAME [--cwd DIR] [-- COMMAND]  a terminal inside the VM (default PowerShell)
+  terminal-windows exec NAME SCRIPT [--timeout 300]    run one PowerShell script inside the VM
   terminal-windows skills install [--dir PATH] | skills get
   terminal-windows update-helper NAME
   terminal-windows iso-info ISO [--edition NAME]      (list editions; create picks Pro by default)
@@ -41,7 +47,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
     private static readonly string[] Flags =
     {
         "offline", "auto-snapshot", "share-writable", "no-view", "detach", "plan", "shutdown", "force",
-        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore",
+        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes",
     };
 
     public static async Task<int> Main(string[] args)
@@ -89,6 +95,10 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "skills" => await SkillsCommand.RunAsync(parsed),
                 "doctor" => await Doctor.RunAsync(parsed),
                 "iso-info" => await IsoInfoCommand.RunAsync(parsed),
+                "term" => await Agent.TermAsync(parsed),
+                "claude" => await Agent.ClaudeAsync(parsed),
+                "exec" => await Agent.ExecAsync(parsed),
+                "agent-install" => await Agent.InstallAsync(parsed),
                 "selftest" => await SelfTest.RunAsync(parsed),
                 "view-demo" => await Viewer.DemoGuest.RunAsync(parsed),
                 _ => throw new UsageException($"Unknown command '{args[0]}'"),

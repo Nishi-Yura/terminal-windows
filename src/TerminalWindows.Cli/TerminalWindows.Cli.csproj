@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\skills\terminal-windows\SKILL.md" LogicalName="SKILL.md" />
+    <EmbeddedResource Include="..\..\skills\terminal-windows-desktop\SKILL.md" LogicalName="GUEST_SKILL.md" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="TerminalWindows.Tests" />

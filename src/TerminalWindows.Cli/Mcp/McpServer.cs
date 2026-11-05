@@ -6,28 +6,6 @@ using TerminalWindows.Protocol;
 
 namespace TerminalWindows.Cli.Mcp;
 
-/// <summary>
-/// Maps between the guest's physical screen pixels and the coordinate space of the screenshots the
-/// MCP client sees. Screenshots are downscaled so the model never has to rescale them itself
-/// (long edge &lt;= 1568 px and &lt;= ~1.15 MP); every coordinate in and out of the MCP tools
-/// uses the screenshot space.
-/// </summary>
-public readonly record struct ScreenSpace(int ScreenWidth, int ScreenHeight)
-{
-    public const int MaxEdge = 1568;
-    public const double MaxPixels = 1_150_000;
-
-    public double Scale => Math.Min(1.0, Math.Min((double)MaxEdge / Math.Max(ScreenWidth, ScreenHeight),
-        Math.Sqrt(MaxPixels / ((double)ScreenWidth * ScreenHeight))));
-
-    public int ImageWidth => Math.Max(1, (int)Math.Round(ScreenWidth * Scale));
-    public int ImageHeight => Math.Max(1, (int)Math.Round(ScreenHeight * Scale));
-
-    public int ToScreenX(int x) => Math.Clamp((int)Math.Round(x / Scale), 0, ScreenWidth - 1);
-    public int ToScreenY(int y) => Math.Clamp((int)Math.Round(y / Scale), 0, ScreenHeight - 1);
-    public int FromScreen(double v) => (int)Math.Round(v * Scale);
-}
-
 /// <summary>stdio MCP server (JSON-RPC 2.0, one message per line). stdout carries protocol messages only.</summary>
 public sealed class McpServer
 {
@@ -54,77 +32,13 @@ public sealed class McpServer
 
     public async Task RunAsync()
     {
-        var stdin = new StreamReader(Console.OpenStandardInput(), new UTF8Encoding(false));
-        var stdout = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true, NewLine = "\n" };
-        var writeLock = new SemaphoreSlim(1, 1);
-        Task? sync = _syncOutbox ? Task.Run(() => Commands.Transfer.SyncOutboxLoopAsync(MachineStore.Load(_machineName), CancellationToken.None)) : null;
-
-        string? line;
-        while ((line = await stdin.ReadLineAsync()) is not null)
-        {
-            if (string.IsNullOrWhiteSpace(line)) continue;
-            JsonObject? req;
-            try { req = JsonNode.Parse(line) as JsonObject; }
-            catch (JsonException)
-            {
-                await Send(stdout, writeLock, Error(null, -32700, "Parse error"));
-                continue;
-            }
-            if (req is null) continue;
-            var id = req["id"]?.DeepClone();
-            var method = req["method"]?.GetValue<string>();
-            if (id is null) continue; // notification (e.g. notifications/initialized)
-
-            JsonObject response;
-            try
-            {
-                var result = method switch
-                {
-                    "initialize" => Initialize(req["params"] as JsonObject),
-                    "ping" => new JsonObject(),
-                    "tools/list" => new JsonObject { ["tools"] = McpTools.Definitions() },
-                    "tools/call" => await CallToolAsync(req["params"] as JsonObject ?? new JsonObject()),
-                    _ => null,
-                };
-                response = result is null
-                    ? Error(id, -32601, $"Method not found: {method}")
-                    : new JsonObject { ["jsonrpc"] = "2.0", ["id"] = id, ["result"] = result };
-            }
-            catch (Exception ex)
-            {
-                response = Error(id, -32603, ex.Message);
-            }
-            await Send(stdout, writeLock, response);
-        }
+        if (_syncOutbox) _ = Task.Run(() => Commands.Transfer.SyncOutboxLoopAsync(MachineStore.Load(_machineName), CancellationToken.None));
+        await McpStdio.RunAsync(Console.OpenStandardInput(), Console.OpenStandardOutput(), "terminal-windows", Instructions,
+            McpTools.Definitions, (name, args) => CallToolAsync(name, args));
     }
 
-    private static async Task Send(StreamWriter w, SemaphoreSlim gate, JsonObject msg)
-    {
-        await gate.WaitAsync();
-        try { await w.WriteLineAsync(msg.ToJsonString()); }
-        finally { gate.Release(); }
-    }
-
-    private static JsonObject Error(JsonNode? id, int code, string message) => new()
-    {
-        ["jsonrpc"] = "2.0", ["id"] = id, ["error"] = new JsonObject { ["code"] = code, ["message"] = message },
-    };
-
-    private JsonObject Initialize(JsonObject? p) => new()
-    {
-        ["protocolVersion"] = p?["protocolVersion"]?.GetValue<string>() ?? "2025-06-18",
-        ["capabilities"] = new JsonObject { ["tools"] = new JsonObject() },
-        ["serverInfo"] = new JsonObject { ["name"] = "terminal-windows", ["version"] = typeof(McpServer).Assembly.GetName().Version?.ToString(3) },
-        ["instructions"] = Instructions,
-    };
-
-    private static JsonObject Text(string text, bool isError = false) => new()
-    {
-        ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = text }),
-        ["isError"] = isError,
-    };
-
-    private static JsonObject Json(JsonNode node) => Text(node.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    private static JsonObject Text(string text, bool isError = false) => McpResult.Text(text, isError);
+    private static JsonObject Json(JsonNode node) => McpResult.Json(node);
 
     private async Task<GuestClient> ClientAsync()
     {
@@ -152,10 +66,8 @@ public sealed class McpServer
         return space;
     }
 
-    private async Task<JsonObject> CallToolAsync(JsonObject p)
+    private async Task<JsonObject> CallToolAsync(string name, JsonObject args)
     {
-        var name = p["name"]?.GetValue<string>() ?? throw new ArgumentException("Missing tool name");
-        var args = p["arguments"] as JsonObject ?? new JsonObject();
         await _gate.WaitAsync();
         try
         {
@@ -354,17 +266,5 @@ public sealed class McpServer
         }
     }
 
-    private static void ScaleRects(JsonNode? node, ScreenSpace s)
-    {
-        if (node is JsonObject o)
-        {
-            if (o["rect"] is JsonArray r && r.Count == 4)
-                o["rect"] = new JsonArray(r.Select(v => (JsonNode)s.FromScreen(v!.GetValue<double>())).ToArray());
-            foreach (var kv in o.ToList()) if (kv.Key != "rect") ScaleRects(kv.Value, s);
-        }
-        else if (node is JsonArray arr)
-        {
-            foreach (var child in arr) ScaleRects(child, s);
-        }
-    }
+    private static void ScaleRects(JsonNode? node, ScreenSpace s) => s.ScaleRects(node);
 }

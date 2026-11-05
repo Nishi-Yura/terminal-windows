@@ -4,6 +4,7 @@ using TerminalWindows.Guest;
 // Usage (inside the VM only):
 //   TerminalWindowsGuest.exe install --source <dir>   (run once from autounattend FirstLogonCommands, elevated)
 //   TerminalWindowsGuest.exe run                      (started at logon by Task Scheduler, highest privileges)
+//   TerminalWindowsGuest.exe mcp                      (local desktop MCP for an agent running inside the VM)
 //   TerminalWindowsGuest.exe --version
 
 if (args.Length > 0 && args[0] is "--version" or "version")
@@ -25,6 +26,15 @@ Native.SetProcessDpiAwarenessContext(Native.DPI_AWARENESS_CONTEXT_PER_MONITOR_AW
 string mode = args.Length > 0 ? args[0] : "run";
 switch (mode)
 {
+    case "mcp":
+    {
+        // Local desktop MCP for an agent running inside this VM. Logs go to a file, never to stdout.
+        Directory.CreateDirectory(GuestPaths.LogDir);
+        Log.FilePath = Path.Combine(GuestPaths.LogDir, "desktop-mcp.log");
+        await new DesktopMcp().RunAsync();
+        return 0;
+    }
+
     case "install":
     {
         int i = Array.IndexOf(args, "--source");

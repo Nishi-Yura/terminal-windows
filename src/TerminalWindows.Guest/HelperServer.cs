@@ -19,6 +19,7 @@ public sealed class HelperServer
     private readonly CaptureManager _capture = new();
     private readonly GuestFiles _files;
     private readonly SelfUpdater _updater = new();
+    private readonly GuestTerminals _terminals = new();
     private readonly ConcurrentDictionary<RpcServerSession, CancellationTokenSource> _streams = new();
     private readonly ConcurrentDictionary<RpcServerSession, ConcurrentDictionary<string, byte>> _heldButtons = new();
     private readonly string _version = Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? "0";
@@ -93,6 +94,7 @@ public sealed class HelperServer
                     finally
                     {
                         if (_streams.TryRemove(session, out var cts)) cts.Cancel();
+                        _terminals.CloseAll(session);
                         if (_heldButtons.TryRemove(session, out var held))
                         {
                             // Never leave a button pressed in the guest because the viewer went away.
@@ -262,6 +264,25 @@ public sealed class HelperServer
             case "stream_stop":
                 if (_streams.TryRemove(session, out var s)) s.Cancel();
                 return Reply.Of(new JsonObject { ["stopped"] = true });
+
+            case "exec":
+                return Reply.Of(await GuestTerminals.ExecAsync(S(a, "script"), I(a, "timeout_s", 300), ct));
+
+            case "pty_open":
+                return Reply.Of(_terminals.Open(session, S(a, "command"), (short)I(a, "cols", 120), (short)I(a, "rows", 30), a["cwd"]?.GetValue<string>()));
+
+            case "pty_input":
+                if (req.Attachments.Count != 1) throw new ArgumentException("pty_input needs one attachment");
+                _terminals.Input(session, I(a, "id"), req.Attachments[0]);
+                return Reply.Of(new JsonObject { ["done"] = true });
+
+            case "pty_resize":
+                _terminals.Resize(session, I(a, "id"), (short)I(a, "cols"), (short)I(a, "rows"));
+                return Reply.Of(new JsonObject { ["done"] = true });
+
+            case "pty_close":
+                _terminals.Close(session, I(a, "id"));
+                return Reply.Of(new JsonObject { ["done"] = true });
 
             case "update_begin":
                 _updater.Begin(a["size"]!.GetValue<long>(), S(a, "sha256"));

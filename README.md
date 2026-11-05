@@ -159,6 +159,51 @@ MCP ツールは次のとおりです。
 - このリポジトリは Claude Code プラグインとしても読み込めます（`.claude-plugin/`、`.mcp.json`、`skills/terminal-windows/SKILL.md`）。
 - 他の MCP クライアント向けの設定は `terminal-windows mcp --config` で出力できます。
 
+### VM の中で AI（Claude Code）を動かす
+
+MCP でホストの Claude から操作する方法のほかに、**AI そのものを VM の中で動かす**こともできます。ホストの PC には一切触れず、使い捨ての VM の中で AI に広い権限を与えられます。
+
+```bash
+terminal-windows agent-install default --yes
+```
+
+```bash
+terminal-windows snapshot default --name agent-ready
+```
+
+```bash
+terminal-windows claude default
+```
+
+**`agent-install` が VM の中で行うこと**
+
+1. Git for Windows と Claude Code（公式インストーラー）を入れる
+2. 画面操作用のローカル MCP サーバー `desktop`（`TerminalWindowsGuest.exe mcp`）を Claude Code に登録する
+3. VM 内用のスキルを入れる
+
+`--yes` を付けずに実行すると、手順を表示するだけで何も変更しません。`--yes` を付けると、winget の利用規約に同意して進めます。Git for Windows は GPLv2 です。
+
+**`claude` で VM の中の Claude Code につなぐ**
+
+`claude` を実行すると、VM の中の Claude Code の画面が、ホストのターミナルにそのまま表示されます。
+
+- Claude Code は、VM の中でウィンドウを持たない疑似端末（ConPTY）で動きます。そのため、画面を操作しても自分の端末に誤って入力することはありません。
+- **Ctrl+]** で切り離します。このとき、VM の中の Claude Code も終了します。前回の会話を続けたいときは、`terminal-windows claude default -- --continue` で起動します。
+
+**サインインについて:** サインインは、ご本人が行ってください。初回の `claude` で表示される URL をホストのブラウザで開き、表示されたコードをターミナルに貼り付けます。
+
+**サインイン情報の扱い:** サインイン情報は VM の中に保存され、VM の中の AI からも読める状態になります。
+
+**ネットワーク:** VM からインターネットに出る必要があるため、`--offline` の VM では使えません。
+
+| コマンド | 内容 |
+|---|---|
+| `terminal-windows claude NAME [-- 引数]` | VM の中で Claude Code を起動して、このターミナルにつなぐ |
+| `terminal-windows term NAME [-- コマンド]` | VM の中の端末につなぐ（既定は PowerShell） |
+| `terminal-windows exec NAME "スクリプト"` | VM の中で PowerShell を 1 回実行する |
+
+成果物の受け渡し（`pull` / `push`）、スナップショット、巻き戻し、停止は、今までどおりホストから操作します。
+
 ### ファイルの受け渡し
 
 共有フォルダは使わず、制御チャネル経由でファイルをコピーします。
