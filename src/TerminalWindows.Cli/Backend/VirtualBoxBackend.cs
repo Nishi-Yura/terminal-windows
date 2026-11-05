@@ -180,7 +180,12 @@ public sealed class VirtualBoxBackend : IVmBackend
         } : VmState.Other;
     }
 
-    public Task StartAsync(string vm, bool headless = true) => VBox("startvm", vm, "--type", headless ? "headless" : "separate");
+    public async Task StartAsync(string vm, bool headless = true)
+    {
+        await VBox("startvm", vm, "--type", headless ? "headless" : "separate");
+        // startvm returns once the VM process runs; exempt it from power throttling right away (see PowerThrottling).
+        PowerThrottling.ExemptVmProcesses();
+    }
     public Task SaveStateAsync(string vm) => VBox("controlvm", vm, "savestate");
     public Task PowerOffAsync(string vm) => VBox("controlvm", vm, "poweroff");
     public Task PauseAsync(string vm) => VBox("controlvm", vm, "pause");

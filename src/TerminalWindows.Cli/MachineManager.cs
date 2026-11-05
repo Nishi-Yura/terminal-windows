@@ -248,6 +248,9 @@ public sealed class MachineManager
             var state = await _backend.GetStateAsync(m.VmName);
             if (state is VmState.PoweredOff or VmState.Aborted or VmState.NotFound)
                 throw new CliException($"VM stopped unexpectedly (state: {state}). Inspect it with 'terminal-windows show {m.Name}'.");
+            // Covers VM processes started before this command (or a GUI window attached later).
+            if (_backend is VirtualBoxBackend && PowerThrottling.ExemptVmProcesses() > 0)
+                _log("  VM process exempted from Windows power throttling.");
             // During setup, "reachable" is not enough: the guest must report setup phase "complete"
             // (the helper can be reachable before the post-install reboot on older guest builds).
             if (state == VmState.Running && await GuestClient.IsReadyAsync(m, requireSetupComplete: installing)) return;

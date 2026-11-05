@@ -30,14 +30,13 @@ public static class Lifecycle
     public static int DefaultMemoryGb() => Doctor.TotalMemoryGb() >= 15.9 ? 8 : 6;
 
     /// <summary>
-    /// 4 vCPUs normally, 2 when a Windows hypervisor is active: under the Windows Hypervisor Platform a
-    /// 4-vCPU guest fell hours behind on its timers and hung mid-install (real run), while fewer vCPUs
-    /// keep the guest schedulable. --cpus still overrides.
+    /// 4 vCPUs, but never more than half the host's logical CPUs. (2 vCPUs under the Windows Hypervisor
+    /// Platform hung twice in the firmware's AP start-up on a real host, while 4 booted every time.)
+    /// --cpus overrides.
     /// </summary>
-    public static int DefaultCpus() => DefaultCpusFor(Doctor.HypervisorPresent(), Environment.ProcessorCount);
+    public static int DefaultCpus() => DefaultCpusFor(Environment.ProcessorCount);
 
-    public static int DefaultCpusFor(bool hypervisorActive, int hostLogicalCpus) =>
-        Math.Max(1, Math.Min(hypervisorActive ? 2 : 4, hostLogicalCpus / 2));
+    public static int DefaultCpusFor(int hostLogicalCpus) => Math.Max(1, Math.Min(4, hostLogicalCpus / 2));
 
     public static async Task<int> DeleteAsync(ParsedArgs a)
     {
