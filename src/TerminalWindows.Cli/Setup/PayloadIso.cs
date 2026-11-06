@@ -50,6 +50,28 @@ public static class PayloadIso
     }
 
     /// <summary>Locates the guest helper binary that ships with the CLI.</summary>
+    /// <summary>
+    /// The shipped terminal-windows.exe carries the guest helper as a resource. It is written once to
+    /// %USERPROFILE%\.terminal-windows\bin under a name that includes its hash, so a newer CLI never reuses an
+    /// older helper and a helper that is in use (being copied into a VM) is never overwritten.
+    /// </summary>
+    public static string? ExtractEmbeddedHelper()
+    {
+        using var res = typeof(PayloadIso).Assembly.GetManifestResourceStream("TerminalWindowsGuest.exe");
+        if (res is null) return null;
+        using var ms = new MemoryStream();
+        res.CopyTo(ms);
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(ms.ToArray()))[..12].ToLowerInvariant();
+        var dir = Path.Combine(MachineStore.Home, "bin", hash);
+        var path = Path.Combine(dir, "TerminalWindowsGuest.exe");
+        if (File.Exists(path) && new FileInfo(path).Length == ms.Length) return path;
+        Directory.CreateDirectory(dir);
+        var tmp = path + ".tmp";
+        File.WriteAllBytes(tmp, ms.ToArray());
+        File.Move(tmp, path, overwrite: true);
+        return path;
+    }
+
     public static string? FindHelperExe()
     {
         var env = Environment.GetEnvironmentVariable("TERMINAL_WINDOWS_GUEST_EXE");
@@ -64,6 +86,8 @@ public static class PayloadIso
         {
             if (File.Exists(candidate)) return candidate;
         }
+
+        if (ExtractEmbeddedHelper() is { } embedded) return embedded;
 
         // Development checkout: <repo>/src/TerminalWindows.Guest/bin/<cfg>/<tfm>/win-x64/publish/
         var dir = new DirectoryInfo(baseDir);

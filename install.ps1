@@ -14,14 +14,12 @@ $src = Join-Path $PSScriptRoot 'dist'
 if (-not (Test-Path (Join-Path $src 'terminal-windows.exe'))) {
     throw "dist\terminal-windows.exe not found. Run build.ps1 first."
 }
-if (-not (Test-Path (Join-Path $src 'guest\TerminalWindowsGuest.exe'))) {
-    throw "dist\guest\TerminalWindowsGuest.exe not found. Run build.ps1 first."
-}
 
 $dest = Join-Path $HOME '.terminal-windows\bin'
-New-Item -ItemType Directory -Force (Join-Path $dest 'guest') | Out-Null
+New-Item -ItemType Directory -Force $dest | Out-Null
 Copy-Item (Join-Path $src 'terminal-windows.exe') $dest -Force
-Copy-Item (Join-Path $src 'guest\TerminalWindowsGuest.exe') (Join-Path $dest 'guest') -Force
+# The guest helper is embedded in terminal-windows.exe; an old guest\ copy would shadow it.
+if (Test-Path (Join-Path $dest 'guest')) { Remove-Item -Recurse -Force (Join-Path $dest 'guest') }
 Write-Host "Installed to $dest"
 
 $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')

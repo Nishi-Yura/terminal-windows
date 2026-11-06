@@ -11,6 +11,7 @@ terminal-windows - an AI-dedicated Windows VM (VirtualBox) you can watch in the 
 AI actions only affect the VM; the host's mouse, keyboard and clipboard are never touched.
 
 Usage:
+  terminal-windows setup [--dry-run]        guided first-time setup (also what double-clicking the exe does)
   terminal-windows up [NAME] [--iso PATH] [--no-view] [--detach] [--plan] [create options]
   terminal-windows create NAME --iso PATH [--cpus 4] [--memory 8] [--disk 64] [--disk-bus sata|nvme] [--paravirt none|minimal|hyperv] [--width 1600] [--height 900]
                           [--offline] [--locale ja-JP] [--ui-language ja-JP] [--timezone TZ]
@@ -47,15 +48,17 @@ AI inside the VM:
 Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WINDOWS_HOME).
 """;
 
-    private static readonly string[] Flags =
+    internal static readonly string[] Flags =
     {
         "offline", "auto-snapshot", "share-writable", "no-view", "detach", "plan", "shutdown", "force",
-        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes", "defender",
+        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes", "defender", "dry-run",
     };
 
     public static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
+        if (args.Length == 0 && Wizard.StartedByDoubleClick())
+            return await Wizard.RunAsync(ParsedArgs.Parse(Array.Empty<string>(), Flags), pauseAtEnd: true);
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
         {
             Console.WriteLine(Usage);
@@ -99,6 +102,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "skills" => await SkillsCommand.RunAsync(parsed),
                 "doctor" => await Doctor.RunAsync(parsed),
                 "host-mode" => await HostMode.RunAsync(parsed),
+                "setup" => await Wizard.RunAsync(parsed, pauseAtEnd: Wizard.StartedByDoubleClick()),
                 "iso-info" => await IsoInfoCommand.RunAsync(parsed),
                 "term" => await Agent.TermAsync(parsed),
                 "claude" => await Agent.ClaudeAsync(parsed),

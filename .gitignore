@@ -7,3 +7,4 @@ TestResults/
 *.iso
 *.dmp
 docs/runs/
+artifacts/

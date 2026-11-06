@@ -31,6 +31,8 @@ public static class Doctor
         return GlobalMemoryStatusEx(ref mem) ? mem.ullTotalPhys / 1024.0 / 1024 / 1024 : 0;
     }
 
+    public static bool VirtualizationEnabledInFirmware() => HypervisorPresent() || IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED);
+
     public static bool HypervisorPresent()
     {
         if (!X86Base.IsSupported) return false;

@@ -1,6 +1,5 @@
-# Builds the self-contained single-file binaries:
-#   dist\terminal-windows.exe              (host CLI)
-#   dist\guest\TerminalWindowsGuest.exe    (guest helper; copied into the VM by unattended setup)
+﻿# Builds dist\terminal-windows.exe: one self-contained exe. The guest helper (copied into the VM by
+# unattended setup) is published to artifacts\guest first and embedded in it as a resource.
 # Usage: powershell -ExecutionPolicy Bypass -File build.ps1 [-Test]
 param([switch]$Test)
 $ErrorActionPreference = 'Stop'
@@ -12,7 +11,7 @@ if ($Test) {
     if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
 }
 
-foreach ($f in @((Join-Path $dist 'terminal-windows.exe'), (Join-Path $dist 'guest\TerminalWindowsGuest.exe'))) {
+foreach ($f in @((Join-Path $dist 'terminal-windows.exe'))) {
     if (Test-Path $f) {
         try { [IO.File]::Open($f, 'Open', 'ReadWrite', 'None').Dispose() }
         catch { throw "$f is in use (a running 'terminal-windows' command, MCP server or viewer). Stop it or wait, then rebuild." }
@@ -20,9 +19,13 @@ foreach ($f in @((Join-Path $dist 'terminal-windows.exe'), (Join-Path $dist 'gue
 }
 
 $common = @('-c', 'Release', '-r', 'win-x64', '--self-contained', 'true', '-p:PublishSingleFile=true', '-nologo')
-dotnet publish (Join-Path $root 'src\TerminalWindows.Guest') @common -o (Join-Path $dist 'guest')
+$guestOut = Join-Path $root 'artifacts\guest'
+dotnet publish (Join-Path $root 'src\TerminalWindows.Guest') @common -o $guestOut
 if ($LASTEXITCODE -ne 0) { throw 'guest publish failed' }
-dotnet publish (Join-Path $root 'src\TerminalWindows.Cli') @common -o $dist
+$guestExe = Join-Path $guestOut 'TerminalWindowsGuest.exe'
+# An old dist\guest folder would win over the embedded helper; remove it.
+if (Test-Path (Join-Path $dist 'guest')) { Remove-Item -Recurse -Force (Join-Path $dist 'guest') }
+dotnet publish (Join-Path $root 'src\TerminalWindows.Cli') @common -o $dist "-p:GuestExePath=$guestExe"
 if ($LASTEXITCODE -ne 0) { throw 'cli publish failed' }
 
 Get-ChildItem $dist -Filter *.pdb -Recurse | Remove-Item

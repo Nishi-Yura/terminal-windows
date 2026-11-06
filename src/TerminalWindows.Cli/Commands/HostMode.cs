@@ -150,6 +150,8 @@ public static class HostMode
         if (hv && LastVbsBootReason() is { } why) Console.WriteLine($"  Last boot: {why}");
     }
 
+    public static IEnumerable<string> ConflictsForWizard() => Conflicts();
+
     private static IEnumerable<string> Conflicts()
     {
         using (var lxss = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Lxss"))
