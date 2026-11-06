@@ -250,12 +250,14 @@ public static class Installer
         // VBoxGuestAdditions.iso ships with VirtualBox itself (not the Extension Pack).
         // Clipboard, drag & drop and shared folders stay disabled on the host side.
         var cds = DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.CDRom && d.IsReady).ToList();
-        // VMware: the VMware Tools disc (display driver for any resolution, time sync).
-        var tools = cds.FirstOrDefault(d => File.Exists(Path.Combine(d.RootDirectory.FullName, "setup64.exe"))
-                                            && File.Exists(Path.Combine(d.RootDirectory.FullName, "VMwareToolsUpgrader.exe")));
+        // VMware: the VMware Tools disc (display driver for any resolution, time sync). Workstation 17.6
+        // ships only a 64-bit setup.exe; older discs have setup64.exe next to a 32-bit setup.exe.
+        var tools = cds.FirstOrDefault(d => File.Exists(Path.Combine(d.RootDirectory.FullName, "VMwareToolsUpgrader.exe")));
         if (tools is not null)
         {
-            Exec(Path.Combine(tools.RootDirectory.FullName, "setup64.exe"), "/S /v \"/qn REBOOT=R\"", timeoutMinutes: 15, captureOutput: false);
+            var toolsRoot = tools.RootDirectory.FullName;
+            var setup = File.Exists(Path.Combine(toolsRoot, "setup64.exe")) ? Path.Combine(toolsRoot, "setup64.exe") : Path.Combine(toolsRoot, "setup.exe");
+            Exec(setup, "/S /v \"/qn REBOOT=R\"", timeoutMinutes: 15, captureOutput: false);
             return;
         }
         var drive = cds.FirstOrDefault(d => File.Exists(Path.Combine(d.RootDirectory.FullName, "VBoxWindowsAdditions.exe")));
