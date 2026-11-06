@@ -187,12 +187,17 @@ public static class Wizard
             items.Add((T("画面を見る・操作する", "Watch and use the screen"), () => Lifecycle.ViewAsync(Args(name))));
             items.Add((T("VM の中のターミナル（PowerShell、文字だけ）", "A terminal inside the VM (PowerShell, text only)"),
                 async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
-            items.Add((T("スナップショットを撮る（今の状態を保存）", "Take a snapshot (save this state)"), () => SnapshotCommands.SnapshotAsync(Args(name))));
+            items.Add((T("AI の成果物（Outbox）を この PC に取り込む", "Fetch the AI's results (Outbox) to this PC"), () => FetchOutboxAsync(m)));
+            items.Add((T("スナップショット（撮る・戻す・消す）", "Snapshots (take / restore / delete)"), () => SnapshotMenuAsync(m)));
             items.Add((vmState == VmState.Running ? T("VM を止める（状態を保存。次回そのまま再開）", "Stop the VM (state is saved; resumes as it was)") : T("VM を起動する", "Start the VM"),
                 () => vmState == VmState.Running ? Lifecycle.StopAsync(Args(name)) : Lifecycle.StartAsync(Args(name))));
             var current = m.Startup ?? (agent is null or "none" ? "view" : "agent");
             items.Add((T($"開いたときに最初に出すもの: {StartupLabel(current, agent)}（変更）", $"Shown first when opened: {StartupLabel(current, agent)} (change)"),
                 () => { ChangeStartup(m, agent); return Task.FromResult(0); }));
+            var freeGb = FreeGb();
+            if (freeGb < 10)
+                Console.WriteLine(T($"  ! ディスクの空きが少なくなっています（{freeGb:0} GB）。古いスナップショットを消すと空きます。",
+                                    $"  ! Low disk space ({freeGb:0} GB free). Deleting old snapshots frees space."));
             Console.WriteLine(T("  （画面を見ている間は Ctrl+] か F12 で、スナップショット・停止・メニューに戻るを選べます）",
                                 "  (while watching the screen, Ctrl+] or F12 gives snapshot / stop / back to menu)"));
             for (int i = 0; i < items.Count; i++) Console.WriteLine($"  {i + 1}) {items[i].Label}");
@@ -208,6 +213,68 @@ public static class Wizard
                 Console.WriteLine(T("エラー: ", "Error: ") + ex.Message);
             }
         }
+    }
+
+    private static double FreeGb()
+    {
+        try { return new DriveInfo(Path.GetPathRoot(Path.GetFullPath(MachineStore.Home))!).AvailableFreeSpace / 1024.0 / 1024 / 1024; }
+        catch (IOException) { return double.MaxValue; }
+    }
+
+    /// <summary>Copies the VM's Outbox to Downloads\terminal-windows\(time) and opens that folder.</summary>
+    private static async Task<int> FetchOutboxAsync(MachineConfig m)
+    {
+        await new MachineManager().EnsureRunningAsync(m);
+        var dest = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", "terminal-windows", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+        await using var c = await GuestClient.ConnectAsync(m);
+        var files = await c.PullAsync(null, dest, TransferLimits.Default, s => Console.WriteLine("  " + s));
+        if (files.Count == 0)
+        {
+            Console.WriteLine(T("  Outbox は空でした（AI には成果物を Desktop\\Outbox に置くよう伝えてあります）。", "  The Outbox is empty (the AI is told to put results in Desktop\\Outbox)."));
+            return 0;
+        }
+        Console.WriteLine(T($"  {files.Count} 個のファイルを {dest} に取り込みました。", $"  Copied {files.Count} file(s) to {dest}."));
+        Process.Start(new ProcessStartInfo("explorer.exe", $"\"{dest}\"") { UseShellExecute = true });
+        return 0;
+    }
+
+    private static async Task<int> SnapshotMenuAsync(MachineConfig m)
+    {
+        var mgr = new MachineManager();
+        var snaps = await mgr.Backend.ListSnapshotsAsync(m.VmName);
+        Console.WriteLine(T("    今あるスナップショット:", "    Snapshots:"));
+        if (snaps.Count == 0) Console.WriteLine(T("      （なし）", "      (none)"));
+        for (int i = 0; i < snaps.Count; i++) Console.WriteLine($"      {i + 1}) {snaps[i].Name}");
+        Console.WriteLine(T("    t) 今の状態を撮る   r) 戻す   d) 消す   Enter) 戻る", "    t) take now   r) restore   d) delete   Enter) back"));
+        Console.Write("    > ");
+        var cmd = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+        if (cmd == "t")
+        {
+            Console.Write(T("    名前（空なら日時）: ", "    Name (empty: date and time): "));
+            var label = (Console.ReadLine() ?? "").Trim();
+            Console.WriteLine(T("    撮っています（1〜3 分）…", "    Taking it (1-3 min)…"));
+            label = await mgr.SnapshotAsync(m, label.Length == 0 ? null : label);
+            Console.WriteLine(T($"    「{label}」を保存しました。", $"    Saved '{label}'."));
+            return 0;
+        }
+        if (cmd is not ("r" or "d") || snaps.Count == 0) return 0;
+        Console.Write(T("    どれ？ 番号: ", "    Which one? Number: "));
+        if (!int.TryParse((Console.ReadLine() ?? "").Trim(), out var k) || k < 1 || k > snaps.Count) return 0;
+        var target = snaps[k - 1].Name;
+        if (cmd == "r")
+        {
+            Console.WriteLine(T($"    「{target}」に戻します。今の状態は自動で別のスナップショットに保存します…", $"    Restoring '{target}'. The current state is saved as another snapshot first…"));
+            var safety = await mgr.RestoreAsync(m, target);
+            Console.WriteLine(T($"    戻しました（直前の状態は「{safety}」）。", $"    Restored (the previous state is '{safety}')."));
+        }
+        else
+        {
+            Console.Write(T($"    「{target}」を消します。元に戻せません。よろしいですか？ [y/N]: ", $"    Delete '{target}'? This cannot be undone. [y/N]: "));
+            if ((Console.ReadLine() ?? "").Trim().ToLowerInvariant() is not ("y" or "yes")) return 0;
+            await mgr.Backend.DeleteSnapshotAsync(m.VmName, target);
+            Console.WriteLine(T($"    「{target}」を消しました。", $"    Deleted '{target}'."));
+        }
+        return 0;
     }
 
     private static Task<int> RunAgentWindowAsync(string name, string agent)

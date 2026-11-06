@@ -279,7 +279,7 @@ public sealed class MachineManager
             // During setup, "reachable" is not enough: the guest must report setup phase "complete"
             // (the helper can be reachable before the post-install reboot on older guest builds).
             if (state == VmState.Running && await GuestClient.IsReadyAsync(m, requireSetupComplete: installing)) return;
-            if (sw.Elapsed - lastReport > TimeSpan.FromMinutes(installing ? 2 : 0.5))
+            if (sw.Elapsed - lastReport > (installing ? TimeSpan.FromMinutes(2) : TimeSpan.FromSeconds(10)))
             {
                 lastReport = sw.Elapsed;
                 if (installing)
@@ -305,7 +305,7 @@ public sealed class MachineManager
                 }
                 else
                 {
-                    _log($"  ...waiting for the guest helper ({sw.Elapsed:mm\\:ss})");
+                    _log(Ui.T($"  …Windows の起動を待っています（{sw.Elapsed:mm\\:ss}。普通は 1 分以内）", $"  ...waiting for Windows to start ({sw.Elapsed:mm\\:ss}; usually under a minute)"));
                 }
             }
             await Task.Delay(TimeSpan.FromSeconds(installing ? 10 : 2));
@@ -365,7 +365,7 @@ public sealed class MachineManager
                 await _backend.ResumeAsync(m.VmName);
                 break;
             case VmState.PoweredOff or VmState.Saved or VmState.Aborted:
-                _log($"Starting {m.VmName} (headless)...");
+                _log(Ui.T($"VM を起動しています（{m.VmName}）…", $"Starting {m.VmName} (headless)..."));
                 await _backend.StartAsync(m.VmName);
                 break;
         }
