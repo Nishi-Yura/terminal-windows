@@ -242,8 +242,14 @@ public sealed class VirtualBoxBackend : IVmBackend
         var state = await GetStateAsync(vm);
         var args = new List<string> { "snapshot", vm, "take", label };
         if (description is not null) { args.Add("--description"); args.Add(description); }
-        if (state is VmState.Running or VmState.Paused) args.Add("--live");
+        // No --live: a live snapshot keeps re-copying pages the guest dirties and, on a busy 6-8 GB guest,
+        // ran for over 15 minutes with the helper unreachable. Without it VirtualBox pauses the VM, writes
+        // memory once (about a minute) and resumes it.
         await VBox(args.ToArray());
+        if (state is VmState.Running)
+        {
+            for (int i = 0; i < 120 && await GetStateAsync(vm) != VmState.Running; i++) await Task.Delay(1000);
+        }
     }
 
     public Task RestoreSnapshotAsync(string vm, string label) => VBox("snapshot", vm, "restore", label);
