@@ -64,12 +64,28 @@ public static class PayloadIso
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(ms.ToArray()))[..12].ToLowerInvariant();
         var dir = Path.Combine(MachineStore.Home, "bin", hash);
         var path = Path.Combine(dir, "TerminalWindowsGuest.exe");
-        if (File.Exists(path) && new FileInfo(path).Length == ms.Length) return path;
+        if (File.Exists(path) && new FileInfo(path).Length == ms.Length) { RemoveOldHelpers(hash); return path; }
         Directory.CreateDirectory(dir);
         var tmp = path + ".tmp";
         File.WriteAllBytes(tmp, ms.ToArray());
         File.Move(tmp, path, overwrite: true);
+        RemoveOldHelpers(hash);
         return path;
+    }
+
+    /// <summary>Each build extracts its helper into bin\(hash); drop the ones from earlier builds (75 MB each).</summary>
+    private static void RemoveOldHelpers(string keep)
+    {
+        try
+        {
+            foreach (var d in Directory.GetDirectories(Path.Combine(MachineStore.Home, "bin")))
+            {
+                var n = Path.GetFileName(d);
+                if (n == keep || n.Length != 12 || !n.All(Uri.IsHexDigit)) continue;
+                try { Directory.Delete(d, recursive: true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
     }
 
     public static string? FindHelperExe()

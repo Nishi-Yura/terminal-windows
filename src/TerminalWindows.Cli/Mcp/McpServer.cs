@@ -268,6 +268,7 @@ public sealed class McpServer
             case "read_text":
             case "list_windows":
             case "focus_window":
+            case "close_window":
             case "clipboard_get":
             case "clipboard_set":
             case "open":
@@ -281,6 +282,7 @@ public sealed class McpServer
                     "read_text" => ("uia_text", a, 45),
                     "list_windows" => ("windows", a, 30),
                     "focus_window" => ("window_focus", a, 30),
+                    "close_window" => ("window_close", a, 30),
                     "clipboard_get" => ("clipboard_get", a, 15),
                     "clipboard_set" => ("clipboard_set", a, 15),
                     _ => ("open", a, 30),

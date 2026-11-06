@@ -237,6 +237,10 @@ public sealed class HelperServer
                 RequireDesktop();
                 return Reply.Of(await UiaActions.FocusWindowAsync(S(a, "window")));
 
+            case "window_close":
+                RequireDesktop();
+                return Reply.Of(await UiaActions.CloseWindowAsync(S(a, "window"), a["force"]?.GetValue<bool>() == true));
+
             case "clipboard_get":
                 return Reply.Of(await UiaActions.ClipboardGetAsync());
 

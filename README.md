@@ -191,7 +191,7 @@ Claude Code などの MCP クライアントから、次のツールで VM を�
 | `wait_for` | ダイアログやボタンが出る（消える）まで待つ |
 | `read_text` | 窓の文字を読む（スクリーンショットなしで、結果やエラー文を正確に） |
 | `find_element` | 名前・種類・AutomationId で部品を探す |
-| `list_windows` / `focus_window` | 窓の一覧、前面に出す |
+| `list_windows` / `focus_window` / `close_window` | 窓の一覧、前面に出す、名前を指定して閉じる（AI 自身の窓は閉じない） |
 | `open` | アプリ・ファイル・フォルダ・URL を開く |
 | `clipboard_get` / `clipboard_set` | VM のクリップボード（ホストのものには触れません） |
 | `run_powershell` | VM の中で PowerShell を実行して結果を受け取る |

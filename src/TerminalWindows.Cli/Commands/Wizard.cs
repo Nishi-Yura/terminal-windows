@@ -337,12 +337,22 @@ public static class Wizard
             try
             {
                 Directory.CreateDirectory(InstallDir);
-                File.Copy(self, target, overwrite: true);
+                foreach (var old in Directory.GetFiles(InstallDir, "terminal-windows.old-*.exe"))
+                    try { File.Delete(old); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
+                try { File.Copy(self, target, overwrite: true); }
+                catch (IOException) when (File.Exists(target))
+                {
+                    // The installed copy is running (an MCP server of an open AI app, say): Windows lets us rename it.
+                    File.Move(target, Path.Combine(InstallDir, $"terminal-windows.old-{DateTime.Now:yyyyMMddHHmmss}.exe"));
+                    File.Copy(self, target);
+                    Console.WriteLine(T("  古い terminal-windows が動いていたので入れ替えました。使っているアプリ（Claude Code など）を開き直すと新しい版になります。",
+                                        "  The old terminal-windows was running and has been replaced; restart apps that use it (e.g. Claude Code)."));
+                }
                 // A guest\ folder from an older two-file install would shadow the helper embedded in the exe.
                 var oldGuest = Path.Combine(InstallDir, "guest");
                 if (Directory.Exists(oldGuest)) Directory.Delete(oldGuest, recursive: true);
             }
-            catch (IOException) { return; } // the installed copy is running; keep using this one
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return; } // keep using this copy
         }
         var path = Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User) ?? "";
         if (!path.Split(';').Any(p => string.Equals(p.TrimEnd('\\'), InstallDir, StringComparison.OrdinalIgnoreCase)))

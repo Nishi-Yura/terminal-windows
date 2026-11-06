@@ -170,7 +170,7 @@ public static class DesktopTools
     {
         var o = new JsonObject
         {
-            ["name"] = Str("visible name / label of the control (case-insensitive; partial match unless exact=true)"),
+            ["name"] = Str("visible name / label of the control (case-insensitive; partial match unless exact=true; accelerators like '(S)' and '...' are ignored, so '保存' finds '保存(S)')"),
             ["control_type"] = Str("Button, Edit, MenuItem, ListItem, TabItem, Hyperlink, CheckBox, ComboBox, TreeItem, Document, ..."),
             ["automation_id"] = Str("AutomationId (from ui_tree / find_element)"),
             ["window"] = Str("title substring or hwnd of the window to search (default: the foreground window; 'desktop' = everything)"),
@@ -181,7 +181,7 @@ public static class DesktopTools
     }
 
     public static readonly string[] Names =
-        { "find_element", "click_element", "set_text", "wait_for", "read_text", "list_windows", "focus_window", "clipboard_get", "clipboard_set", "open" };
+        { "find_element", "click_element", "set_text", "wait_for", "read_text", "list_windows", "focus_window", "close_window", "clipboard_get", "clipboard_set", "open" };
 
     public static IEnumerable<JsonObject> Definitions() => new[]
     {
@@ -194,7 +194,7 @@ public static class DesktopTools
                 ["action"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("click", "double_click", "right_click", "invoke", "toggle", "select", "expand", "collapse", "focus"), ["default"] = "click" },
                 ["index"] = Int("which match to use when several match (0 = best, default)"),
             })),
-        McpResult.Tool("set_text", "Put text into an input control (replaces its content). Uses the UI Automation value when possible, otherwise focuses it, selects all and types. Refuses password fields.",
+        McpResult.Tool("set_text", "Put text into an input control (replaces its content): clicks it, selects all and types real keystrokes, so dialogs such as Save As see the text; returns the value read back. Refuses password fields.",
             Query(new JsonObject { ["value"] = Str("the text"), ["index"] = Int("which match (default 0)") }), "value"),
         McpResult.Tool("wait_for", "Wait until a control appears (or with gone=true disappears), e.g. a dialog, a 'Done' label or a button becoming available. Polls up to timeout_ms.",
             Query(new JsonObject { ["gone"] = Bool("wait for it to disappear"), ["timeout_ms"] = Int("max wait (default 30000, max 300000)") })),
@@ -203,6 +203,9 @@ public static class DesktopTools
         McpResult.Tool("list_windows", "List the top-level windows: title, process, hwnd, rect, minimized/maximized, which is in front.", new JsonObject()),
         McpResult.Tool("focus_window", "Bring a window to the front (restores it if minimized).",
             new JsonObject { ["window"] = Str("title substring or hwnd") }, "window"),
+        McpResult.Tool("close_window", "Close a window like its X button (safer than alt+f4, which hits whatever is in front). " +
+            "If the app asks to save, the result says so; answer that prompt. Refuses the AI agents' own terminal windows unless force=true.",
+            new JsonObject { ["window"] = Str("title substring or hwnd"), ["force"] = Bool("allow closing an AI agent's terminal window (only when the person asked)") }, "window"),
         McpResult.Tool("clipboard_get", "Read the VM's clipboard text (the VM's own clipboard; the host's is never touched).", new JsonObject()),
         McpResult.Tool("clipboard_set", "Set the VM's clipboard text (then paste with key 'ctrl+v'). Good for long or multi-line text.",
             new JsonObject { ["text"] = Str("text") }, "text"),

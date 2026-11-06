@@ -21,7 +21,9 @@ from here and you cannot touch it. They can watch this VM's screen live, so work
    - `open` (app / file / folder / URL), `click_element` (button, menu item, tab, link, list item, with
      `action` invoke / toggle / select / expand when needed), `set_text` (fill an input box),
      `wait_for` (a dialog or label appears; `gone: true` to disappear), `read_text` (a window's text),
-     `find_element`, `list_windows`, `focus_window`, `clipboard_get` / `clipboard_set`.
+     `find_element`, `list_windows`, `focus_window`, `close_window`, `clipboard_get` / `clipboard_set`.
+   - Use `close_window` (by title) instead of `alt+f4`; it refuses your own terminal window.
+   - Dialogs (Save As, Open, confirmations) usually live inside their app's window: pass the app's title as `window`.
    - Fall back to `screenshot` + `click` / `type` for canvases and custom-drawn UI.
 
 ## Your own window — do not type into yourself

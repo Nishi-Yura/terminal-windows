@@ -90,13 +90,25 @@ public static class UiaActions
             try { name = el.Current.Name ?? ""; offscreen = el.Current.IsOffscreen; } catch { continue; }
             int score;
             if (q.Name is null) score = 1;
-            else if (name.Equals(q.Name, StringComparison.OrdinalIgnoreCase)) score = 3;
-            else if (!q.Exact && name.Contains(q.Name, StringComparison.OrdinalIgnoreCase)) score = 2;
+            else if (name.Equals(q.Name, StringComparison.OrdinalIgnoreCase)) score = 4;
+            else if (Label(name).Equals(Label(q.Name), StringComparison.OrdinalIgnoreCase)) score = 3;
+            else if (!q.Exact && Label(name).Contains(Label(q.Name), StringComparison.OrdinalIgnoreCase)) score = 2;
             else continue;
             if (!offscreen) score += 10;
             found.Add((el, score));
         }
         return found.OrderByDescending(f => f.Score).Take(max).Select(f => f.El).ToList();
+    }
+
+    /// <summary>
+    /// A control's label as a person reads it: "保存(S)", "&amp;Save", "開く(&amp;O)...", "名前を付けて保存…" become
+    /// "保存", "Save", "開く", "名前を付けて保存". Exact matching compares labels, so "保存" finds "保存(S)".
+    /// </summary>
+    public static string Label(string s)
+    {
+        var t = s.Replace("&", "").Trim();
+        t = System.Text.RegularExpressions.Regex.Replace(t, @"\s*[(（][A-Za-z0-9][)）]\s*", " ").Trim();
+        return t.TrimEnd('.', '…', ' ', ':', '：');
     }
 
     private static ControlType ParseControlType(string s)
@@ -224,20 +236,25 @@ public static class UiaActions
                 {
                     if (value is null) throw new ArgumentException("set_value needs 'value'");
                     if (c.IsPassword) throw new InvalidOperationException("Refusing to fill a password field; ask the person to type it");
-                    if (el.TryGetCurrentPattern(ValuePattern.Pattern, out var vp) && !((ValuePattern)vp).Current.IsReadOnly)
+                    // Real keystrokes by default: classic dialogs (Save As, Run, ...) keep their own copy of the text and
+                    // ignore a value set through UI Automation. Very long text goes through ValuePattern when it can.
+                    if (value.Length > 2000 && el.TryGetCurrentPattern(ValuePattern.Pattern, out var vp) && !((ValuePattern)vp).Current.IsReadOnly)
                     {
                         try
                         {
                             ((ValuePattern)vp).SetValue(value);
                             info["method"] = "ValuePattern";
-                            info["value"] = ((ValuePattern)vp).Current.Value is var v && v.Length > 300 ? v[..300] + "…" : ((ValuePattern)vp).Current.Value;
                             return (info, (int?)null, (int?)null);
                         }
                         catch (InvalidOperationException) { }
                     }
-                    el.SetFocus();
+                    try { el.SetFocus(); } catch (InvalidOperationException) { }
+                    var r = c.BoundingRectangle;
                     info["method"] = "focus + select all + type";
-                    return (info, (int?)-1, (int?)-1);
+                    // Click into it too when it is on screen: some controls take focus only from the pointer.
+                    return r.IsEmpty || double.IsInfinity(r.X) || c.IsOffscreen
+                        ? (info, (int?)-1, (int?)-1)
+                        : (info, (int?)(-2 - (int)(r.X + r.Width / 2)), (int?)(int)(r.Y + r.Height / 2));
                 }
                 default:
                     throw new ArgumentException($"Unknown action '{action}' (click, double_click, right_click, invoke, toggle, select, expand, collapse, focus, set_value)");
@@ -246,10 +263,21 @@ public static class UiaActions
         });
 
         var (result, x, y) = plan;
-        if (x == -1)
+        if (x is int sx && sx <= -1)
         {
+            if (sx <= -2 && y is int ty) await InputInjector.ClickAsync(-2 - sx, ty);
             await InputInjector.KeyAsync("ctrl+a");
             await InputInjector.TypeAsync(value!);
+            // Read it back so the agent sees what the control really holds.
+            result["value"] = await Sta(() =>
+            {
+                try
+                {
+                    var el = Matches(ReadQuery(a), index + 20).ElementAtOrDefault(index);
+                    return el is not null && el.TryGetCurrentPattern(ValuePattern.Pattern, out var vp) ? (JsonNode?)Trunc(((ValuePattern)vp).Current.Value) : null;
+                }
+                catch (ElementNotAvailableException) { return null; }
+            });
         }
         else if (x is int px && y is int py)
         {
@@ -257,6 +285,8 @@ public static class UiaActions
         }
         return result;
     }
+
+    private static string Trunc(string v) => v.Length > 300 ? v[..300] + "…" : v;
 
     private static string Describe(Query q)
     {
@@ -358,10 +388,7 @@ public static class UiaActions
             return (new IntPtr(el.Current.NativeWindowHandle), el.Current.Name);
         });
         if (hwnd == IntPtr.Zero) throw new InvalidOperationException($"'{title}' has no window handle");
-        // Windows only lets the process with the last input change the foreground; a tap of Alt makes it us.
-        await InputInjector.KeyAsync("alt");
-        SetForegroundWindow(hwnd);
-        await Task.Delay(200);
+        await BringToFrontAsync(hwnd);
         var now = Native.GetForegroundWindow();
         return new JsonObject { ["focused"] = now == hwnd, ["title"] = title, ["foreground"] = Native.WindowTitle(now) };
     }
@@ -387,16 +414,94 @@ public static class UiaActions
         return new JsonObject { ["done"] = true, ["length"] = text.Length };
     }, TimeSpan.FromSeconds(10));
 
-    /// <summary>Opens an app, file, folder or URL like the Run box / a double-click (ShellExecute).</summary>
+    /// <summary>
+    /// Opens an app, file, folder or URL like the Run box / a double-click (ShellExecute), then brings the
+    /// window it opened to the front (Windows would otherwise leave it behind the agent's own window).
+    /// </summary>
     public static async Task<JsonObject> OpenAsync(string target, string? args)
     {
+        var before = TopLevelWindows().Select(w => w.Hwnd).ToHashSet();
         var psi = new ProcessStartInfo(Environment.ExpandEnvironmentVariables(target)) { UseShellExecute = true };
         if (!string.IsNullOrEmpty(args)) psi.Arguments = args;
         int? pid = null;
         try { using var p = Process.Start(psi); pid = p?.Id; }
         catch (System.ComponentModel.Win32Exception ex) { throw new ArgumentException($"Could not open '{target}': {ex.Message}"); }
-        await Task.Delay(1500);
+
+        // Wait (up to 15 s) for a new top-level window.
+        string? title = null;
+        var sw = Stopwatch.StartNew();
+        while (sw.ElapsedMilliseconds < 15_000)
+        {
+            await Task.Delay(400);
+            var fresh = TopLevelWindows().FirstOrDefault(w => !before.Contains(w.Hwnd));
+            if (fresh.Hwnd != IntPtr.Zero)
+            {
+                title = fresh.Title;
+                await BringToFrontAsync(fresh.Hwnd);
+                break;
+            }
+        }
         var fg = Native.GetForegroundWindow();
-        return new JsonObject { ["opened"] = target, ["pid"] = pid, ["foreground"] = fg == IntPtr.Zero ? null : Native.WindowTitle(fg) };
+        return new JsonObject
+        {
+            ["opened"] = target, ["pid"] = pid, ["window"] = title,
+            ["foreground"] = fg == IntPtr.Zero ? null : Native.WindowTitle(fg),
+            ["note"] = title is null ? "No new window appeared within 15 s (the app may have reused an existing window); check list_windows and focus_window." : null,
+        };
+    }
+
+    private static List<(IntPtr Hwnd, string Title, int Pid)> TopLevelWindows()
+    {
+        var list = new List<(IntPtr, string, int)>();
+        EnumWindows((h, _) =>
+        {
+            if (!IsWindowVisible(h)) return true;
+            var t = Native.WindowTitle(h);
+            if (string.IsNullOrWhiteSpace(t) || t is "Program Manager") return true;
+            Native.GetWindowThreadProcessId(h, out var p);
+            list.Add((h, t, (int)p));
+            return true;
+        }, IntPtr.Zero);
+        return list;
+    }
+
+    private static async Task BringToFrontAsync(IntPtr hwnd)
+    {
+        if (IsIconic(hwnd)) ShowWindow(hwnd, 9 /* SW_RESTORE */);
+        // Windows only lets the process with the last input change the foreground; a tap of Alt makes it us.
+        await InputInjector.KeyAsync("alt");
+        SetForegroundWindow(hwnd);
+        await Task.Delay(200);
+    }
+
+    private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr hwnd);
+    [DllImport("user32.dll")] private static extern bool PostMessageW(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hwnd, int cmd);
+
+    /// <summary>The agent's own terminal windows: closing one ends the agent's session.</summary>
+    private static readonly string[] AgentWindowTitles = { "Claude Code", "Codex", "Gemini CLI" };
+
+    /// <summary>Closes a window politely (like its X button); the app may still ask to save.</summary>
+    public static async Task<JsonObject> CloseWindowAsync(string titleOrHwnd, bool force)
+    {
+        var (hwnd, title) = await Sta(() =>
+        {
+            var el = FindTopLevel(titleOrHwnd) ?? throw new ArgumentException($"No window title contains '{titleOrHwnd}' (see list_windows)");
+            return (new IntPtr(el.Current.NativeWindowHandle), el.Current.Name);
+        });
+        if (!force && AgentWindowTitles.Any(t => title.Equals(t, StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException($"'{title}' is an AI agent's terminal window; closing it ends that session. Pass force=true only if the person asked for it.");
+        if (hwnd == IntPtr.Zero) throw new InvalidOperationException($"'{title}' has no window handle");
+        PostMessageW(hwnd, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero); // Post: a "save?" prompt must not block us
+        await Task.Delay(800);
+        bool stillOpen = TopLevelWindows().Any(w => w.Hwnd == hwnd);
+        return new JsonObject
+        {
+            ["closed"] = !stillOpen, ["title"] = title,
+            ["note"] = stillOpen ? "The window is still open; it is probably asking to save. Read it with read_text / find_element and answer the prompt." : null,
+        };
     }
 }

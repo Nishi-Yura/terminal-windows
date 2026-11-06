@@ -134,6 +134,9 @@ public sealed class DesktopMcp
                 case "focus_window":
                     RequireDesktop();
                     return McpResult.Json(await UiaActions.FocusWindowAsync(S(a, "window")));
+                case "close_window":
+                    RequireDesktop();
+                    return McpResult.Json(await UiaActions.CloseWindowAsync(S(a, "window"), a["force"]?.GetValue<bool>() == true));
                 case "clipboard_get":
                     return McpResult.Json(await UiaActions.ClipboardGetAsync());
                 case "clipboard_set":

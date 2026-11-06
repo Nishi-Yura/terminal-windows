@@ -27,6 +27,9 @@ own mouse, keyboard and clipboard are never touched, so they keep working on the
    - `wait_for` waits for a dialog, label or button to appear (`gone: true` to disappear).
    - `read_text` reads a window's text (results, error messages, forms) without a screenshot.
    - `find_element` / `ui_tree` when you need to see what is there; `list_windows` / `focus_window` for windows.
+   - `close_window` (by title) instead of `alt+f4`, which closes whatever happens to be in front.
+   - Dialogs (Save As, Open, confirmations) usually live inside their app's window: search them with
+     `window` = the app's title, e.g. `set_text` name "ファイル名" then `click_element` name "保存".
    - `clipboard_set` + `key ctrl+v` for long or multi-line text; `clipboard_get` to read what an app copied.
 3. **Pixels** (`screenshot`, `click`, `drag`, `scroll`, `type`, `key`) when a control has no usable name
    (canvases, games, custom-drawn UI) or to check how something looks.

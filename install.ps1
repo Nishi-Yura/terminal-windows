@@ -17,7 +17,18 @@ if (-not (Test-Path (Join-Path $src 'terminal-windows.exe'))) {
 
 $dest = Join-Path $HOME '.terminal-windows\bin'
 New-Item -ItemType Directory -Force $dest | Out-Null
-Copy-Item (Join-Path $src 'terminal-windows.exe') $dest -Force
+$target = Join-Path $dest 'terminal-windows.exe'
+# Leftovers of earlier updates (see below); they are free once their processes have exited.
+Get-ChildItem $dest -Filter 'terminal-windows.old-*.exe' -ErrorAction SilentlyContinue | ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+try {
+    Copy-Item (Join-Path $src 'terminal-windows.exe') $target -Force
+} catch [System.IO.IOException] {
+    # The installed exe is running (e.g. as an MCP server of an open AI app). Windows cannot overwrite a
+    # running exe but can rename it: move it aside, then copy. Running copies keep working until restarted.
+    Rename-Item $target ("terminal-windows.old-{0:yyyyMMddHHmmss}.exe" -f (Get-Date))
+    Copy-Item (Join-Path $src 'terminal-windows.exe') $target -Force
+    Write-Host "The old version was still running; restart apps that use it (for example Claude Code) to load the new one."
+}
 # The guest helper is embedded in terminal-windows.exe; an old guest\ copy would shadow it.
 if (Test-Path (Join-Path $dest 'guest')) { Remove-Item -Recurse -Force (Join-Path $dest 'guest') }
 Write-Host "Installed to $dest"
