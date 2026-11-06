@@ -163,7 +163,7 @@ public static class Wizard
         var name = MachineStore.ImplicitMachine() ?? Name;
         var first = MachineStore.Load(name);
         var agent = first.Agent ?? state["agent"]?.GetValue<string>() ?? InstalledAgent();
-        var startup = first.Startup ?? (agent is null or "none" ? "view" : "agent");
+        var startup = first.Startup ?? "menu";
 
         if (startup != "menu")
         {
@@ -188,10 +188,12 @@ public static class Wizard
             items.Add((T("VM の中のターミナル（PowerShell、文字だけ）", "A terminal inside the VM (PowerShell, text only)"),
                 async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
             items.Add((T("AI の成果物（Outbox）を この PC に取り込む", "Fetch the AI's results (Outbox) to this PC"), () => FetchOutboxAsync(m)));
+            items.Add((T("この PC の Claude Code から VM を使えるようにする（MCP とスキルを登録）", "Let this PC's Claude Code use the VM (register MCP + skill)"),
+                () => ConnectCommand.RunAsync(Args(name))));
             items.Add((T("スナップショット（撮る・戻す・消す）", "Snapshots (take / restore / delete)"), () => SnapshotMenuAsync(m)));
             items.Add((vmState == VmState.Running ? T("VM を止める（状態を保存。次回そのまま再開）", "Stop the VM (state is saved; resumes as it was)") : T("VM を起動する", "Start the VM"),
                 () => vmState == VmState.Running ? Lifecycle.StopAsync(Args(name)) : Lifecycle.StartAsync(Args(name))));
-            var current = m.Startup ?? (agent is null or "none" ? "view" : "agent");
+            var current = m.Startup ?? "menu";
             items.Add((T($"開いたときに最初に出すもの: {StartupLabel(current, agent)}（変更）", $"Shown first when opened: {StartupLabel(current, agent)} (change)"),
                 () => { ChangeStartup(m, agent); return Task.FromResult(0); }));
             var freeGb = FreeGb();

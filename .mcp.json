@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "terminal-windows": {
-      "command": "terminal-windows",
+      "command": "${USERPROFILE}/.terminal-windows/bin/terminal-windows.exe",
       "args": ["mcp", "default"]
     }
   }

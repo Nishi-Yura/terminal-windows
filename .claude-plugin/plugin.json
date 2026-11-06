@@ -1,8 +1,8 @@
 {
   "name": "terminal-windows",
   "version": "0.1.0",
-  "description": "Drive an AI-dedicated Windows 11 VM (VirtualBox) through MCP: screenshots, clicks, typing, UI Automation trees, snapshots, and file hand-off via Inbox/Outbox. Actions never touch the host PC.",
+  "description": "Drive an AI-dedicated Windows 11 VM (VMware Workstation or VirtualBox) through MCP: screenshots, clicks, typing, UI Automation trees, snapshots, and file hand-off via Inbox/Outbox. Actions never touch the host PC.",
   "author": { "name": "terminal-windows" },
   "license": "MIT",
-  "keywords": ["windows", "virtualbox", "vm", "computer-use", "mcp"]
+  "keywords": ["windows", "virtualbox", "vmware", "vm", "computer-use", "mcp"]
 }

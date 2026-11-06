@@ -7,14 +7,14 @@
 
 **AI エージェント専用の「もう 1 台の Windows PC」を、あなたの PC の中に。**
 
-> *An AI-only Windows 11 VM you can watch in your terminal and let AI agents drive — your own mouse, keyboard and clipboard are never touched. Works on Windows 11 Home (VirtualBox).*
+> *An AI-only Windows 11 VM you can watch in your terminal and let AI agents drive — your own mouse, keyboard and clipboard are never touched. Works on Windows 11 Home (VMware Workstation or VirtualBox).*
 
-terminal-windows は、VirtualBox で **AI 専用の Windows 11** を自動で用意するツールです。
+terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専用の Windows 11** を自動で用意するツールです。
 
 - 🤖 **AI はその VM の中だけで作業します。** ホスト PC のマウス・キーボード・クリップボードには一切触れないので、AI が作業している間もあなたは PC を普段どおり使えます。
 - 🖥️ **VM の画面はターミナルの中に表示されます。** 見るだけでなく、クリックや入力もできます。
 - 🧩 **AI のつなぎ方は 2 通りあります。** ホストの Claude Code などから MCP で操作する方法と、AI そのものを VM の中で動かす方法です。
-- 🏠 **Windows 11 Home でも動きます。** Hyper-V は使わず、無料の VirtualBox を使います。
+- 🏠 **Windows 11 Home でも動きます。** Hyper-V は使わず、無料の VMware Workstation か VirtualBox を使います。
 
 ---
 
@@ -54,14 +54,13 @@ terminal-windows は、VirtualBox で **AI 専用の Windows 11** を自動で�
 
 **0.1.0（開発中）**
 
-- 自動テストは **135 件すべて合格**しています（GitHub Actions で毎回実行）。
-- 実際の VirtualBox 7.2 で、次の段階まで確認済みです。
-  - VM の作成、起動、スナップショット、クローン
-  - Windows セットアップの起動、エディション選択、ファイルのコピー
-- 次の項目は、まだ実機で確認中です。
-  - 初回ログオン以降の流れ
-  - `selftest`
-  - VM の中の AI
+- 自動テストは **159 件すべて合格**しています（GitHub Actions で毎回実行）。
+- 実機で確認済みのこと（Windows 11 Home、VMware Workstation 17.6、ハイパーバイザー有効）:
+  - ISO からの完全自動セットアップ（約 12 分）、`selftest` 19 項目
+  - ターミナルでの画面表示と操作、MCP、スナップショット
+  - VM の中の Claude Code（VM のデスクトップの窓で表示）
+- VirtualBox は、Windows のハイパーバイザーを切った状態で動作を確認しています。
+- まだのこと: まっさらな PC での通しテスト、Codex / Gemini の実機確認。
 
 詳しくは [docs/VALIDATION.md](docs/VALIDATION.md) にまとめています。ビルド済みの配布物（Release）はまだありません。今はソースからビルドしてください。
 
@@ -96,7 +95,7 @@ terminal-windows は、VirtualBox で **AI 専用の Windows 11** を自動で�
 
 ### ふだんの使い方
 
-`terminal-windows.exe` を開くと（ターミナルで `terminal-windows` と打っても同じ）、**すぐに VM の画面がターミナルに出ます**。AI を入れてあれば、その AI（Claude Code など）が VM のデスクトップの窓で開いた状態で映ります。
+`terminal-windows.exe` を開くと（ターミナルで `terminal-windows` と打っても同じ）、**番号で選ぶメニューが出ます**。Enter だけで 1 番（AI の窓。AI を入れていなければ VM の画面）が開きます。最初からメニューを出さずに AI の窓や VM の画面を出したいときは、メニューの「開いたときに最初に出すもの」で変えられます。
 
 - 画面を見ている間に **Ctrl+]**（または **F12**）を押すと、下の行にメニューが出ます。
 
@@ -104,16 +103,18 @@ terminal-windows は、VirtualBox で **AI 専用の Windows 11** を自動で�
 
   スナップショットは、画面を見たまま裏で撮れます。
 - **Ctrl+G** を押すと、Windows のショートカット一覧（Win キー、Alt+Tab など）が出ます。
-- 「メニューへ戻る」を選ぶと、番号で選ぶメニューが出ます。最初に何を出すか（AI の窓 / VM の画面 / メニュー）も、ここで変えられます。
+- 「メニューへ戻る」を選ぶと、番号のメニューに戻ります。
 
 ```
 == terminal-windows: default (vmware, 起動中) ==
   1) claude を開く（VM のデスクトップの窓で。画面ごと見えます）
   2) 画面を見る・操作する
   3) VM の中のターミナル（PowerShell、文字だけ）
-  4) スナップショットを撮る（今の状態を保存）
-  5) VM を止める（状態を保存。次回そのまま再開）
-  6) 開いたときに最初に出すもの: claude の窓（変更）
+  4) AI の成果物（Outbox）を この PC に取り込む
+  5) この PC の Claude Code から VM を使えるようにする（MCP とスキルを登録）
+  6) スナップショット（撮る・戻す・消す）
+  7) VM を止める（状態を保存。次回そのまま再開）
+  8) 開いたときに最初に出すもの: このメニュー（変更）
   q) 終わる（VM はそのまま）
 ```
 
@@ -172,8 +173,10 @@ terminal-windows view default
 ### A. ホストの AI から操作する（MCP）
 
 ```bash
-claude mcp add --scope user terminal-windows -- terminal-windows mcp default
+terminal-windows connect
 ```
+
+`connect` は、この PC の Claude Code にスキル（`~\.claude\skills\terminal-windows`）と MCP サーバーを登録します（メニューからも選べます）。exe の場所を絶対パスで登録するので、PATH の変更がまだ反映されていないアプリでも動きます。
 
 Claude Code などの MCP クライアントから、次のツールで VM を操作できます。ほかのクライアント向けの設定は `terminal-windows mcp --config` で出力できます。
 

@@ -257,3 +257,61 @@ public static class SkillsCommand
         }
     }
 }
+
+/// <summary>
+/// <c>connect [NAME]</c>: lets the AI tools on this PC use the VM. Installs the host skill and registers the
+/// MCP server with Claude Code (user scope, absolute exe path, so it works before PATH changes reach running
+/// apps). Codex and other clients get the config to paste.
+/// </summary>
+public static class ConnectCommand
+{
+    public static async Task<int> RunAsync(ParsedArgs a)
+    {
+        var name = a.PosOrNull(0) ?? MachineStore.ImplicitMachine() ?? MachineStore.DefaultName;
+        a.RejectUnknown();
+        MachineStore.Load(name);
+        var exe = InstalledExe();
+
+        var skill = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "skills", "terminal-windows", "SKILL.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(skill)!);
+        File.WriteAllText(skill, SkillsCommand.SkillText());
+        Console.WriteLine(Ui.T($"  スキルを入れました: {skill}", $"  Skill installed: {skill}"));
+
+        var claude = FindClaude();
+        if (claude is null)
+        {
+            Console.WriteLine(Ui.T("  この PC に Claude Code が見つかりません。入れたあとで、もう一度実行してください。", "  Claude Code was not found on this PC. Run this again after installing it."));
+        }
+        else
+        {
+            var run = new ProcessRunner();
+            await run.RunAsync(claude, new[] { "mcp", "remove", "--scope", "user", "terminal-windows" }, TimeSpan.FromSeconds(30));
+            var r = await run.RunAsync(claude, new[] { "mcp", "add", "--scope", "user", "terminal-windows", "--", exe, "mcp", name }, TimeSpan.FromSeconds(30));
+            if (!r.Success) throw new CliException("claude mcp add failed: " + (r.StdErr + r.StdOut).Trim());
+            Console.WriteLine(Ui.T("  Claude Code に MCP を登録しました（全プロジェクト共通）。Claude Code を開き直すと使えます。",
+                                   "  Registered the MCP server with Claude Code (all projects). Restart Claude Code to use it."));
+        }
+        Console.WriteLine(Ui.T("  ほかの AI ツール（Codex、Cursor など）には次の設定を貼ってください:", "  For other AI tools (Codex, Cursor, ...), paste this config:"));
+        Output.Json(new JsonObject { ["mcpServers"] = new JsonObject { ["terminal-windows"] = new JsonObject { ["command"] = exe, ["args"] = new JsonArray("mcp", name) } } });
+        return 0;
+    }
+
+    /// <summary>The installed copy when there is one (a dist/ or Downloads copy may move or be deleted).</summary>
+    private static string InstalledExe()
+    {
+        var installed = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".terminal-windows", "bin", "terminal-windows.exe");
+        return File.Exists(installed) ? installed : Environment.ProcessPath ?? installed;
+    }
+
+    private static string? FindClaude()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var candidates = new List<string> { Path.Combine(home, ".local", "bin", "claude.exe") };
+        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            candidates.Add(Path.Combine(dir.Trim(), "claude.exe"));
+            candidates.Add(Path.Combine(dir.Trim(), "claude.cmd"));
+        }
+        return candidates.FirstOrDefault(File.Exists);
+    }
+}

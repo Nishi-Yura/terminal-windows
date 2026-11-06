@@ -45,6 +45,7 @@ AI inside the VM:
   terminal-windows exec NAME SCRIPT [--timeout 300]    run one PowerShell script inside the VM
   terminal-windows tune NAME [--defender] [--yes]      lighter guest: no visual effects/indexing/SysMain, high-perf power
   terminal-windows skills install [--dir PATH] | skills get
+  terminal-windows connect [NAME]          let this PC's Claude Code use the VM (MCP + skill)
   terminal-windows update-helper NAME
   terminal-windows iso-info ISO [--edition NAME]      (list editions; create picks Pro by default)
   terminal-windows selftest NAME [--with-restore]      (real-VM checklist; writes logsselftest-*.md)
@@ -111,6 +112,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "action" => await ActionCommand.RunAsync(parsed),
                 "mcp" => await McpCommand.RunAsync(parsed),
                 "skills" => await SkillsCommand.RunAsync(parsed),
+                "connect" => await ConnectCommand.RunAsync(parsed),
                 "doctor" => await Doctor.RunAsync(parsed),
                 "host-mode" => await HostMode.RunAsync(parsed),
                 "setup" => await Wizard.RunAsync(parsed, pauseAtEnd: Wizard.StartedByDoubleClick()),
