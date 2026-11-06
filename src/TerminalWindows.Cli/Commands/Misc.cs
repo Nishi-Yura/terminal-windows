@@ -103,6 +103,27 @@ public static class SnapshotCommands
         return 0;
     }
 
+    /// <summary><c>delete-snapshot [NAME] LABEL --yes</c>: frees the disk space a snapshot holds (it cannot be restored afterwards).</summary>
+    public static async Task<int> DeleteAsync(ParsedArgs a)
+    {
+        var m = MachineStore.Load(a.Machine());
+        var label = a.Pos(1, "LABEL");
+        bool yes = a.Flag("yes");
+        a.RejectUnknown();
+        var backend = new MachineManager().Backend;
+        var snaps = await backend.ListSnapshotsAsync(m.VmName);
+        if (!snaps.Any(s => s.Name == label))
+            throw new CliException($"No snapshot named '{label}'. Available: {string.Join(", ", snaps.Select(s => s.Name))}");
+        if (!yes)
+        {
+            Console.WriteLine($"This deletes snapshot '{label}' of {m.Name}; you cannot go back to it afterwards. Re-run with --yes to delete.");
+            return 1;
+        }
+        await backend.DeleteSnapshotAsync(m.VmName, label);
+        Console.WriteLine($"Deleted snapshot '{label}'.");
+        return 0;
+    }
+
     public static async Task<int> RestoreAsync(ParsedArgs a)
     {
         var m = MachineStore.Load(a.Machine());

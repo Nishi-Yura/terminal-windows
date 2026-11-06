@@ -29,7 +29,7 @@ Usage:
   terminal-windows status NAME
   terminal-windows resolution NAME WIDTHxHEIGHT          (change the VM's screen size)
   terminal-windows screen NAME [--out FILE]            (screenshot taken by the hypervisor; works during setup)
-  terminal-windows snapshot NAME [--name LABEL] | restore NAME LABEL | snapshots NAME
+  terminal-windows snapshot NAME [--name LABEL] | restore NAME LABEL | snapshots NAME | delete-snapshot NAME LABEL --yes
   terminal-windows pull NAME [GUEST_PATH] [--to HOST_DIR] [--sync-outbox]
   terminal-windows push NAME HOST_PATH [--to GUEST_DIR]
   terminal-windows notes NAME [--edit]
@@ -97,6 +97,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "status" => await Lifecycle.StatusAsync(parsed),
                 "snapshot" => await SnapshotCommands.SnapshotAsync(parsed),
                 "restore" => await SnapshotCommands.RestoreAsync(parsed),
+                "delete-snapshot" => await SnapshotCommands.DeleteAsync(parsed),
                 "snapshots" => await SnapshotCommands.ListAsync(parsed),
                 "screen" => await Lifecycle.ScreenAsync(parsed),
                 "resolution" => await Lifecycle.ResolutionAsync(parsed),
