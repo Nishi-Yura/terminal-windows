@@ -13,11 +13,11 @@ if (args.Length > 0 && args[0] is "--version" or "version")
     return 0;
 }
 
-var (isVBox, manufacturer, model) = VmCheck.Detect();
-if (!isVBox)
+var (isVm, manufacturer, model) = VmCheck.Detect();
+if (!isVm)
 {
     // Guard against running on the host by mistake. NOT a security guarantee (SMBIOS can be spoofed).
-    Console.Error.WriteLine($"TerminalWindowsGuest runs only inside a VirtualBox VM (found '{manufacturer}' / '{model}'). Exiting.");
+    Console.Error.WriteLine($"TerminalWindowsGuest runs only inside a VirtualBox or VMware VM (found '{manufacturer}' / '{model}'). Exiting.");
     return 2;
 }
 

@@ -322,12 +322,26 @@ public sealed class VmwareBackend : IVmBackend
         return default;
     }
 
+    public async Task DisposeVncAsync()
+    {
+        foreach (var c in _vnc.Values) await c.DisposeAsync();
+        _vnc.Clear();
+    }
+
+    public Task TypeAsync(string vm, string text, bool jis) => WithVncAsync(vm, async c => { await c.TypeAsync(text, jis); return true; });
+
     public Task PressBootKeyAsync(string vm) =>
         WithVncAsync(vm, async c => { await c.KeyAsync(0x20); return true; }); // Space: "Press any key to boot from CD or DVD"
 
     public async Task<bool> ScreenshotPngAsync(string vm, string path)
     {
-        var img = await WithVncAsync(vm, c => c.CaptureAsync(TimeSpan.FromSeconds(20)));
+        // Tap Shift first: an idle guest turns its display off and VNC then shows only black.
+        var img = await WithVncAsync(vm, async c =>
+        {
+            await c.KeyAsync(0xffe1);
+            await Task.Delay(1500);
+            return await c.CaptureAsync(TimeSpan.FromSeconds(20));
+        });
         if (img is null) return false;
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         await File.WriteAllBytesAsync(path, Imaging.EncodePng(img));

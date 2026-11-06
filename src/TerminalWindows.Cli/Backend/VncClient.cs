@@ -123,6 +123,94 @@ public sealed class VncClient : IAsyncDisposable
         }
     }
 
+    public async Task KeyEventAsync(uint keysym, bool down)
+    {
+        var m = new byte[8];
+        m[0] = 4; m[1] = (byte)(down ? 1 : 0);
+        BinaryPrimitives.WriteUInt32BigEndian(m.AsSpan(4), keysym);
+        await _s.WriteAsync(m);
+    }
+
+    /// <summary>
+    /// Types text and {key} / {mod+key} tokens ({enter}, {esc}, {tab}, {win+r}, {ctrl+a}...).
+    /// VMware's VNC server maps keysyms to US scancodes, so on a Japanese (JIS) guest layout the
+    /// keysym that lands on the wanted character differs for some symbols; <paramref name="jis"/> handles that.
+    /// </summary>
+    public async Task TypeAsync(string text, bool jis)
+    {
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '{' && text.IndexOf('}', i) is int end && end > i)
+            {
+                var token = text[(i + 1)..end].ToLowerInvariant();
+                if (token.StartsWith("wait ") && int.TryParse(token[5..], out var secs))
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(secs));
+                    i = end;
+                    continue;
+                }
+                if (token.StartsWith("click ") && token.Split(' ') is { Length: 3 } xy)
+                {
+                    await PointerAsync(int.Parse(xy[1]), int.Parse(xy[2]), 1);
+                    await Task.Delay(80);
+                    await PointerAsync(int.Parse(xy[1]), int.Parse(xy[2]), 0);
+                    i = end;
+                    continue;
+                }
+                var parts = token.Split('+');
+                var mods = parts[..^1].Select(Named).ToList();
+                foreach (var k in mods) await KeyEventAsync(k, true);
+                var key = Named(parts[^1]);
+                await KeyEventAsync(key, true);
+                await KeyEventAsync(key, false);
+                foreach (var k in Enumerable.Reverse(mods)) await KeyEventAsync(k, false);
+                i = end;
+            }
+            else
+            {
+                var c = jis ? JisToUs(text[i]) : text[i];
+                // VMware maps a keysym to its key's scancode and does not add Shift itself.
+                bool shift = NeedsShift(c);
+                if (shift) await KeyEventAsync(0xffe1, true);
+                await KeyEventAsync(c, true);
+                await KeyEventAsync(c, false);
+                if (shift) await KeyEventAsync(0xffe1, false);
+            }
+            await Task.Delay(15);
+        }
+    }
+
+    private static uint Named(string k) => k switch
+    {
+        "enter" => 0xff0d, "esc" => 0xff1b, "tab" => 0xff09, "backspace" => 0xff08, "space" => 0x20,
+        "win" => 0xffeb, "ctrl" => 0xffe3, "alt" => 0xffe9, "shift" => 0xffe1,
+        "up" => 0xff52, "down" => 0xff54, "left" => 0xff51, "right" => 0xff53, "f4" => 0xffc1,
+        _ when k.Length == 1 => k[0],
+        _ => throw new ArgumentException("Unknown key {" + k + "}"),
+    };
+
+    /// <summary>PointerEvent: moves the pointer to (x, y) with the given button mask (1 = left button down).</summary>
+    public async Task PointerAsync(int x, int y, byte buttons)
+    {
+        var m = new byte[6];
+        m[0] = 5; m[1] = buttons;
+        BinaryPrimitives.WriteUInt16BigEndian(m.AsSpan(2), (ushort)x);
+        BinaryPrimitives.WriteUInt16BigEndian(m.AsSpan(4), (ushort)y);
+        await _s.WriteAsync(m);
+    }
+
+    /// <summary>True for characters typed with Shift on a US keyboard.</summary>
+    public static bool NeedsShift(uint c) => c is >= 'A' and <= 'Z' || "~!@#$%^&*()_+{}|:\"<>?".Contains((char)c);
+
+    /// <summary>The US-layout character whose key produces <paramref name="c"/> on a JIS keyboard.</summary>
+    public static uint JisToUs(char c) => c switch
+    {
+        // '\' and '_' have no US-layout key on JIS (yen / ro keys); avoid them in typed text.
+        ':' => '\'', '"' => '@', '\'' => '&', '(' => '*', ')' => '(', '=' => '_', '~' => '+', '^' => '=',
+        '@' => '[', '[' => ']', ']' => '\\', '`' => '{', '{' => '}', '}' => '|', '+' => ':', '*' => '"', '&' => '^',
+        _ => c,
+    };
+
     /// <summary>Requests the whole screen and returns it as a BGRA image.</summary>
     public async Task<BgraImage> CaptureAsync(TimeSpan timeout)
     {
@@ -213,6 +301,8 @@ public sealed class VncClient : IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        // A graceful FIN: VMware does not seem to free the slot of a connection that ends with a reset.
+        try { _tcp.Client.Shutdown(SocketShutdown.Both); } catch (SocketException) { } catch (ObjectDisposedException) { }
         _tcp.Dispose();
         return ValueTask.CompletedTask;
     }

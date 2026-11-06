@@ -47,13 +47,19 @@ public static class GuestPaths
 /// </summary>
 public static class VmCheck
 {
-    public static (bool IsVirtualBox, string Manufacturer, string Model) Detect()
+    /// <summary>True inside a VirtualBox or VMware VM (the two hypervisors terminal-windows creates VMs with).</summary>
+    public static (bool IsSupportedVm, string Manufacturer, string Model) Detect()
     {
         using var key = Registry.LocalMachine.OpenSubKey(@"HARDWARE\DESCRIPTION\System\BIOS");
         var manufacturer = key?.GetValue("SystemManufacturer") as string ?? "";
         var model = key?.GetValue("SystemProductName") as string ?? "";
-        bool ok = model.Equals("VirtualBox", StringComparison.OrdinalIgnoreCase)
-                  || manufacturer.Equals("innotek GmbH", StringComparison.OrdinalIgnoreCase);
-        return (ok, manufacturer, model);
+        return (IsSupported(manufacturer, model), manufacturer, model);
     }
+
+    public static bool IsSupported(string manufacturer, string model) =>
+        model.Equals("VirtualBox", StringComparison.OrdinalIgnoreCase)
+        || manufacturer.Equals("innotek GmbH", StringComparison.OrdinalIgnoreCase)
+        // VMware Workstation: "VMware, Inc." / "VMware20,1" (the number follows the hardware version).
+        || manufacturer.Equals("VMware, Inc.", StringComparison.OrdinalIgnoreCase)
+        || model.StartsWith("VMware", StringComparison.OrdinalIgnoreCase);
 }

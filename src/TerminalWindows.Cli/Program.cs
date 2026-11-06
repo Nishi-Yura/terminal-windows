@@ -24,6 +24,7 @@ Usage:
   terminal-windows ls
   terminal-windows delete NAME --yes                   (deletes the VM, its disk, snapshots and folder)
   terminal-windows status NAME
+  terminal-windows screen NAME [--out FILE]            (screenshot taken by the hypervisor; works during setup)
   terminal-windows snapshot NAME [--name LABEL] | restore NAME LABEL | snapshots NAME
   terminal-windows pull NAME [GUEST_PATH] [--to HOST_DIR] [--sync-outbox]
   terminal-windows push NAME HOST_PATH [--to GUEST_DIR]
@@ -91,6 +92,8 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "snapshot" => await SnapshotCommands.SnapshotAsync(parsed),
                 "restore" => await SnapshotCommands.RestoreAsync(parsed),
                 "snapshots" => await SnapshotCommands.ListAsync(parsed),
+                "screen" => await Lifecycle.ScreenAsync(parsed),
+                "setup-keys" => await Lifecycle.SetupKeysAsync(parsed),
                 "clone" => await SnapshotCommands.CloneAsync(parsed),
                 "update-helper" => await SnapshotCommands.UpdateHelperAsync(parsed),
                 "refresh-payload" => await SnapshotCommands.RefreshPayloadAsync(parsed),

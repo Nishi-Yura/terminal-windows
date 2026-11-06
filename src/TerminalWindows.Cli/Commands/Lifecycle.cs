@@ -210,6 +210,47 @@ public static class Lifecycle
         return 0;
     }
 
+    /// <summary>A screenshot from the hypervisor itself: works before the guest helper exists (Windows Setup).</summary>
+    public static async Task<int> ScreenAsync(ParsedArgs a)
+    {
+        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var output = Path.GetFullPath(a.Opt("out") ?? MachineManager.SetupScreenPath(m.Name));
+        var keys = a.Opt("keys");
+        var layout = a.Opt("layout");
+        int wait = a.Int("wait", 3);
+        a.RejectUnknown();
+        var backend = new RoutedBackend();
+        if (keys is not null)
+        {
+            // Hidden troubleshooting aid (VMware): type first, then capture, over the same VNC connection.
+            if (m.Backend != Backends.Vmware) throw new CliException("--keys works with VMware machines only.");
+            bool jis = layout is null ? m.Locale.StartsWith("ja", StringComparison.OrdinalIgnoreCase) : layout == "jis";
+            var vmw = new VmwareBackend();
+            await vmw.TypeAsync(m.VmName, keys, jis);
+            await Task.Delay(TimeSpan.FromSeconds(wait));
+            if (!await vmw.ScreenshotPngAsync(m.VmName, output)) throw new CliException("Screenshot failed.");
+            await vmw.DisposeVncAsync();
+            Console.WriteLine(output);
+            return 0;
+        }
+        if (!await backend.ScreenshotPngAsync(m.VmName, output))
+            throw new CliException("The hypervisor could not take a screenshot (is the VM running?).");
+        Console.WriteLine(output);
+        return 0;
+    }
+
+    /// <summary>Hidden troubleshooting command: types into a VMware VM over VNC (no guest software needed).</summary>
+    public static async Task<int> SetupKeysAsync(ParsedArgs a)
+    {
+        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var text = a.Pos(1, "TEXT");
+        bool jis = a.Opt("layout") is { } l ? l == "jis" : m.Locale.StartsWith("ja", StringComparison.OrdinalIgnoreCase);
+        a.RejectUnknown();
+        if (m.Backend != Backends.Vmware) throw new CliException("setup-keys works with VMware machines only.");
+        await new VmwareBackend().TypeAsync(m.VmName, text, jis);
+        return 0;
+    }
+
     public static async Task<int> StatusAsync(ParsedArgs a)
     {
         var m = MachineStore.Load(a.Pos(0, "NAME"));
