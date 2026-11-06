@@ -238,6 +238,10 @@ terminal-windows pull default
 
 WSL2、Docker Desktop、メモリ整合性などが有効な PC では、VirtualBox が Windows のハイパーバイザーを経由して動くため、**かなり遅くなります**（`doctor` が警告します）。実機では、Windows 11 のセットアップが再起動のあとで毎回固まりました。
 
+**おすすめ: VMware Workstation Pro を使う。** 個人利用は無料で、Broadcom のアカウントを登録すればダウンロードできます。ハイパーバイザーがオンのままでも、セットアップは約 12 分で終わり、自己テストもすべて通りました。VMware が入っていて、ハイパーバイザーがオンの PC では、新しい VM は自動で VMware を使います（`--backend vmware|virtualbox` で選べます）。設定を何も変えずに使えるので、WSL2 や Docker もそのまま使えます。
+
+VMware を使わない場合は、次の方法があります。
+
 1. **ハイパーバイザーをオフにする（効果：大。実質必須）**
    - 「Windows セキュリティ」→「デバイス セキュリティ」→「コア分離」で、メモリ整合性をオフにします。
    - 管理者のターミナルで `bcdedit /set hypervisorlaunchtype off` を実行し、再起動します。
