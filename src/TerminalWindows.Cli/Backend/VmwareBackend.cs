@@ -112,6 +112,13 @@ public sealed class VmwareBackend : IVmBackend
             ("firmware", "efi"), ("uefi.secureBoot.enabled", "TRUE"),
             ("numvcpus", s.Cpus.ToString()), ("cpuid.coresPerSocket", s.Cpus.ToString()),
             ("memsize", s.MemoryMb.ToString()),
+            // PCIe root ports: without them the NVMe disk and the e1000e NIC have no slot ("No PCIe slot available").
+            ("pciBridge0.present", "TRUE"),
+            ("pciBridge4.present", "TRUE"), ("pciBridge4.virtualDev", "pcieRootPort"), ("pciBridge4.functions", "8"),
+            ("pciBridge5.present", "TRUE"), ("pciBridge5.virtualDev", "pcieRootPort"), ("pciBridge5.functions", "8"),
+            ("pciBridge6.present", "TRUE"), ("pciBridge6.virtualDev", "pcieRootPort"), ("pciBridge6.functions", "8"),
+            ("pciBridge7.present", "TRUE"), ("pciBridge7.virtualDev", "pcieRootPort"), ("pciBridge7.functions", "8"),
+            ("hpet0.present", "TRUE"), ("vmci0.present", "TRUE"),
             ("nvme0.present", "TRUE"), ("nvme0:0.present", "TRUE"), ("nvme0:0.fileName", vm + ".vmdk"),
             ("sata0.present", "TRUE"),
             ("sata0:1.present", "TRUE"), ("sata0:1.deviceType", "cdrom-image"), ("sata0:1.fileName", s.InstallIso), ("sata0:1.startConnected", "TRUE"),
@@ -291,34 +298,40 @@ public sealed class VmwareBackend : IVmBackend
 
     public Task ForgetMediumAsync(string path) => Task.CompletedTask;
 
-    public async Task PressBootKeyAsync(string vm)
+    // VMware frees a VNC slot only long after the client disconnects (40 slots; a run of 60 short
+    // connections hit "Reached maximum remote connections"), so one connection per VM is kept and reused.
+    private readonly Dictionary<string, VncClient> _vnc = new();
+
+    private async Task<T?> WithVncAsync<T>(string vm, Func<VncClient, Task<T>> use)
     {
         var m = MachineFor(vm);
-        if (m is null) return;
-        try
+        if (m is null) return default;
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            await using var vnc = await VncClient.ConnectAsync(m.VncPort, m.VncPassword, TimeSpan.FromSeconds(5));
-            await vnc.KeyAsync(0x20); // Space: "Press any key to boot from CD or DVD"
+            try
+            {
+                if (!_vnc.TryGetValue(vm, out var c))
+                    _vnc[vm] = c = await VncClient.ConnectAsync(m.VncPort, m.VncPassword, TimeSpan.FromSeconds(10));
+                return await use(c);
+            }
+            catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException or ObjectDisposedException)
+            {
+                if (_vnc.Remove(vm, out var dead)) await dead.DisposeAsync();
+            }
         }
-        catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException) { }
+        return default;
     }
+
+    public Task PressBootKeyAsync(string vm) =>
+        WithVncAsync(vm, async c => { await c.KeyAsync(0x20); return true; }); // Space: "Press any key to boot from CD or DVD"
 
     public async Task<bool> ScreenshotPngAsync(string vm, string path)
     {
-        var m = MachineFor(vm);
-        if (m is null) return false;
-        try
-        {
-            await using var vnc = await VncClient.ConnectAsync(m.VncPort, m.VncPassword, TimeSpan.FromSeconds(10));
-            var img = await vnc.CaptureAsync(TimeSpan.FromSeconds(20));
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            await File.WriteAllBytesAsync(path, Imaging.EncodePng(img));
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or SocketException or OperationCanceledException)
-        {
-            return false;
-        }
+        var img = await WithVncAsync(vm, c => c.CaptureAsync(TimeSpan.FromSeconds(20)));
+        if (img is null) return false;
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        await File.WriteAllBytesAsync(path, Imaging.EncodePng(img));
+        return true;
     }
 
     public Task SetVideoModeHintAsync(string vm, int width, int height) => Task.CompletedTask; // the helper sets it from inside
