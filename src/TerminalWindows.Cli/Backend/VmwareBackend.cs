@@ -137,7 +137,10 @@ public sealed class VmwareBackend : IVmBackend
             ("RemoteDisplay.vnc.ip", "127.0.0.1"), ("RemoteDisplay.vnc.password", vncPassword),
             // Never stop on a dialog nobody can see (we run without a window).
             ("msg.autoAnswer", "TRUE"),
-            ("tools.syncTime", "TRUE"), ("svga.autodetect", "TRUE"),
+            // Display: without a window VMware derives the mode list from these, and the default
+            // (autodetect) offered nothing above 1024x768 to the guest's VMware SVGA driver.
+            ("tools.syncTime", "TRUE"), ("svga.autodetect", "FALSE"), ("svga.vramSize", "268435456"),
+            ("svga.maxWidth", "3840"), ("svga.maxHeight", "2160"),
         };
         if (toolsIso is not null)
             lines.AddRange(new[] { ("sata0:3.present", "TRUE"), ("sata0:3.deviceType", "cdrom-image"), ("sata0:3.fileName", toolsIso), ("sata0:3.startConnected", "TRUE") });

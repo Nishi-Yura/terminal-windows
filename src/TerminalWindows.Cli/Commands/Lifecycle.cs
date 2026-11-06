@@ -210,6 +210,24 @@ public static class Lifecycle
         return 0;
     }
 
+    /// <summary><c>resolution NAME WIDTHxHEIGHT</c>: changes the guest's screen size and remembers it.</summary>
+    public static async Task<int> ResolutionAsync(ParsedArgs a)
+    {
+        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var size = a.Pos(1, "WIDTHxHEIGHT").ToLowerInvariant().Split('x');
+        a.RejectUnknown();
+        if (size.Length != 2 || !int.TryParse(size[0], out var w) || !int.TryParse(size[1], out var h) || w < 640 || h < 480)
+            throw new UsageException("Give the size as WIDTHxHEIGHT, e.g. 1600x900");
+        await using var c = await GuestClient.ConnectAsync(m);
+        var r = await c.CallAsync("set_resolution", new() { ["width"] = w, ["height"] = h });
+        if (r["ok"]?.GetValue<bool>() != true)
+            throw new CliException($"The guest's display driver refused {w}x{h} (result {r["result"]}).");
+        m.Width = r["width"]?.GetValue<int>() ?? w; m.Height = r["height"]?.GetValue<int>() ?? h;
+        MachineStore.Save(m);
+        Console.WriteLine(m.Width == w && m.Height == h ? $"{m.Name}: {w}x{h}" : $"{m.Name}: {m.Width}x{m.Height} (closest mode the display driver offers to {w}x{h})");
+        return 0;
+    }
+
     /// <summary>A screenshot from the hypervisor itself: works before the guest helper exists (Windows Setup).</summary>
     public static async Task<int> ScreenAsync(ParsedArgs a)
     {

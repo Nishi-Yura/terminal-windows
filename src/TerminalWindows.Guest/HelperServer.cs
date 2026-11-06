@@ -331,15 +331,48 @@ public sealed class HelperServer
         };
     }
 
+    /// <summary>
+    /// Sets the screen size. If the display driver has no such mode (VMware's SVGA driver lists 1366x768
+    /// but not 1600x900), the largest listed mode that fits and has about the same shape is used instead.
+    /// The reply says which size was set.
+    /// </summary>
     public static JsonObject SetResolution(int width, int height)
+    {
+        int r = TryMode(width, height);
+        if (r == Native.DISP_CHANGE_BADMODE && ClosestMode(ListModes(), width, height) is { } alt)
+        {
+            r = TryMode(alt.W, alt.H);
+            if (r == 0) { width = alt.W; height = alt.H; }
+        }
+        return new JsonObject { ["result"] = r, ["ok"] = r == 0, ["width"] = width, ["height"] = height };
+    }
+
+    private static int TryMode(int width, int height)
     {
         var dm = new Native.DEVMODE { dmSize = (short)System.Runtime.InteropServices.Marshal.SizeOf<Native.DEVMODE>() };
         if (!Native.EnumDisplaySettingsW(null, Native.ENUM_CURRENT_SETTINGS, ref dm)) throw new InvalidOperationException("EnumDisplaySettings failed");
         dm.dmPelsWidth = width;
         dm.dmPelsHeight = height;
         dm.dmFields = Native.DM_PELSWIDTH | Native.DM_PELSHEIGHT;
-        int r = Native.ChangeDisplaySettingsW(ref dm, Native.CDS_UPDATEREGISTRY);
-        return new JsonObject { ["result"] = r, ["ok"] = r == 0 };
+        return Native.ChangeDisplaySettingsW(ref dm, Native.CDS_UPDATEREGISTRY);
+    }
+
+    private static List<(int W, int H)> ListModes()
+    {
+        var list = new List<(int, int)>();
+        var dm = new Native.DEVMODE { dmSize = (short)System.Runtime.InteropServices.Marshal.SizeOf<Native.DEVMODE>() };
+        for (int i = 0; Native.EnumDisplaySettingsW(null, i, ref dm); i++) list.Add((dm.dmPelsWidth, dm.dmPelsHeight));
+        return list.Distinct().ToList();
+    }
+
+    /// <summary>The largest mode no bigger than the request whose aspect ratio is within 2%; else the largest that fits.</summary>
+    public static (int W, int H)? ClosestMode(IEnumerable<(int W, int H)> modes, int width, int height)
+    {
+        var fits = modes.Where(m => m.W <= width && m.H <= height).ToList();
+        double want = (double)width / height;
+        var sameShape = fits.Where(m => Math.Abs((double)m.W / m.H - want) / want < 0.02).ToList();
+        var pool = sameShape.Count > 0 ? sameShape : fits;
+        return pool.Count == 0 ? null : pool.OrderByDescending(m => (long)m.W * m.H).First();
     }
 
     private async Task StreamLoopAsync(RpcServerSession session, int width, int height, int fps, CancellationToken ct)

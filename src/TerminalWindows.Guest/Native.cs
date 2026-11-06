@@ -99,7 +99,7 @@ internal static partial class Native
         public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
         public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
     }
-    public const int DM_PELSWIDTH = 0x80000, DM_PELSHEIGHT = 0x100000, ENUM_CURRENT_SETTINGS = -1, CDS_UPDATEREGISTRY = 1;
+    public const int DM_PELSWIDTH = 0x80000, DM_PELSHEIGHT = 0x100000, ENUM_CURRENT_SETTINGS = -1, CDS_UPDATEREGISTRY = 1, DISP_CHANGE_BADMODE = -2;
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool EnumDisplaySettingsW(string? device, int mode, ref DEVMODE dm);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int ChangeDisplaySettingsW(ref DEVMODE dm, int flags);
 

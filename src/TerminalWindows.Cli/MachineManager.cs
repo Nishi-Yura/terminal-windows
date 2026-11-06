@@ -322,7 +322,7 @@ public sealed class MachineManager
         catch (CliException ex) { _log("  resolution hint failed (Guest Additions missing?): " + ex.Message); }
         await using (var c = await GuestClient.ConnectAsync(m))
         {
-            try { await c.CallAsync("set_resolution", new() { ["width"] = m.Width, ["height"] = m.Height }); } catch { }
+            try { RecordSize(m, await c.CallAsync("set_resolution", new() { ["width"] = m.Width, ["height"] = m.Height })); } catch { }
         }
         await _backend.EjectInstallMediaAsync(m.VmName);
         // The setup ISOs contain the token and the auto-logon password: unregister and delete them all.
@@ -372,6 +372,40 @@ public sealed class MachineManager
         await WaitForHelperAsync(m, m.SetupComplete ? TimeSpan.FromMinutes(5) : TimeSpan.FromMinutes(240), installing: !m.SetupComplete);
         if (!m.SetupComplete) await FinalizeSetupAsync(m);
         await EnsureHelperCurrentAsync(m);
+        await EnsureResolutionAsync(m);
+    }
+
+    /// <summary>
+    /// Re-applies the configured resolution when the guest runs at another one. On VMware the display
+    /// driver (VMware Tools) only becomes active a reboot after setup applied the resolution once.
+    /// </summary>
+    /// <summary>The guest may pick the closest mode its display driver has; remember what it used.</summary>
+    private static void RecordSize(MachineConfig m, System.Text.Json.Nodes.JsonObject reply)
+    {
+        if (reply["width"]?.GetValue<int>() is int w && reply["height"]?.GetValue<int>() is int h && (w != m.Width || h != m.Height))
+        {
+            m.Width = w; m.Height = h;
+            MachineStore.Save(m);
+        }
+    }
+
+    public async Task EnsureResolutionAsync(MachineConfig m)
+    {
+        try
+        {
+            await using var c = await GuestClient.ConnectAsync(m);
+            var screen = (await c.CallAsync("status"))["screen"];
+            if (screen?["width"]?.GetValue<int>() == m.Width && screen?["height"]?.GetValue<int>() == m.Height) return;
+            var r = await c.CallAsync("set_resolution", new() { ["width"] = m.Width, ["height"] = m.Height });
+            if (r["ok"]?.GetValue<bool>() != true)
+            {
+                _log($"  could not set {m.Width}x{m.Height} (display driver result {r["result"]}).");
+                return;
+            }
+            RecordSize(m, r);
+            _log($"Screen set to {m.Width}x{m.Height}.");
+        }
+        catch (Exception ex) when (ex is CliException or Protocol.RpcException or TimeoutException or IOException) { }
     }
 
     /// <summary>Self-update: if the bundled helper differs from the one running in the guest, send it over.</summary>
