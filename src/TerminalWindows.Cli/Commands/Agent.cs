@@ -109,6 +109,29 @@ public static class Agent
         }
     }
 
+    /// <summary>
+    /// Pre-approves the in-VM desktop MCP tools (screenshot, click, type...) so Claude does not stop for
+    /// permission on every GUI step. Shell commands and file edits keep Claude Code's normal prompts.
+    /// Merges into an existing settings.json and writes it without a BOM.
+    /// </summary>
+    public const string ClaudeSettingsScript = """
+        $p = Join-Path $env:USERPROFILE '.claude\settings.json'
+        New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null
+        $s = if (Test-Path $p) { Get-Content $p -Raw -Encoding UTF8 | ConvertFrom-Json } else { New-Object PSObject }
+        if (-not $s.PSObject.Properties['permissions']) { $s | Add-Member -NotePropertyName permissions -NotePropertyValue (New-Object PSObject) }
+        if (-not $s.permissions.PSObject.Properties['allow']) { $s.permissions | Add-Member -NotePropertyName allow -NotePropertyValue @() }
+        $s.permissions.allow = @(@($s.permissions.allow) + 'mcp__desktop' | Where-Object { $_ } | Select-Object -Unique)
+        [IO.File]::WriteAllText($p, ($s | ConvertTo-Json -Depth 20), (New-Object Text.UTF8Encoding $false))
+        'allow: ' + ($s.permissions.allow -join ', ')
+        """;
+
+    public static string GuestBriefText()
+    {
+        using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("GUEST_BRIEF.md") ?? throw new CliException("guest brief resource missing");
+        using var r = new StreamReader(s);
+        return r.ReadToEnd();
+    }
+
     public static string GuestSkillText()
     {
         using var s = Assembly.GetExecutingAssembly().GetManifestResourceStream("GUEST_SKILL.md") ?? throw new CliException("guest skill resource missing");
@@ -300,7 +323,14 @@ public static class Agent
         }
 
         await using var c = await GuestClient.ConnectAsync(m);
-        var all = steps.Append(("Write the in-VM instructions", InstructionsScript(agent, GuestSkillText()), 60));
+        var all = steps.Append(("Write the in-VM instructions", InstructionsScript(agent, GuestSkillText()), 60)).ToList();
+        if (agent.Id == "claude")
+        {
+            // CLAUDE.md is always loaded (a skill only when it looks relevant): the short brief goes there.
+            all.Add(("Write the always-on brief (~/.claude/CLAUDE.md)",
+                InstructionsScript(agent with { InstructionsFile = @".claude\CLAUDE.md", InstructionsAsSkill = false }, GuestBriefText()), 60));
+            all.Add(("Allow the desktop tools without asking each time (~/.claude/settings.json)", ClaudeSettingsScript, 60));
+        }
         foreach (var (title, script, timeout) in all)
         {
             Console.Error.WriteLine($"==> {title}");

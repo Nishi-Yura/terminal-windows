@@ -20,6 +20,7 @@
   <ItemGroup>
     <EmbeddedResource Include="..\..\skills\terminal-windows\SKILL.md" LogicalName="SKILL.md" />
     <EmbeddedResource Include="..\..\skills\terminal-windows-desktop\SKILL.md" LogicalName="GUEST_SKILL.md" />
+    <EmbeddedResource Include="..\..\skills\terminal-windows-desktop\BRIEF.md" LogicalName="GUEST_BRIEF.md" />
   </ItemGroup>
   <!-- build.ps1 publishes the guest helper first and passes its path, so the shipped CLI is one exe. -->
   <ItemGroup Condition="'$(GuestExePath)' != ''">

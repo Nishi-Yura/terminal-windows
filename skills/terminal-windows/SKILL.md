@@ -1,6 +1,6 @@
 ---
 name: terminal-windows
-description: Operate the AI-dedicated Windows VM (terminal-windows / VirtualBox) through its MCP tools - take screenshots, click, type, read UI Automation trees, take snapshots, hand files to the user via the Outbox, and keep work notes. Use whenever a task must be done in a Windows GUI without touching the user's own PC.
+description: Operate the AI-dedicated Windows VM (terminal-windows, on VirtualBox or VMware Workstation) through its MCP tools - take screenshots, click, type, read UI Automation trees, take snapshots, hand files to the user via the Outbox, and keep work notes. Use whenever a task must be done in a Windows GUI without touching the user's own PC.
 ---
 
 # terminal-windows: operating the AI Windows VM
@@ -15,6 +15,15 @@ own mouse, keyboard and clipboard are never touched, so they keep working on the
    - If `session` is not `desktop` (lock screen, logon screen, UAC secure desktop): **stop and tell the user**.
      Do not try to type passwords or unlock anything.
 3. `screenshot` to see where things are.
+
+## Choose the cheapest way that works
+
+- A GUI is slow and expensive (every step needs a screenshot). Use it for GUI-only apps and pages that
+  need a real browser. If the task is really about files, installs or scripts, say so and suggest the
+  person run it with an AI *inside* the VM (`terminal-windows claude --window`), which has a shell there.
+- `ui_tree` is cheaper than a screenshot when you only need to find a control or read text.
+- An AI may already be working inside the VM in a "Claude Code" / "Codex" / "Gemini CLI" terminal
+  window. Do not type into, close or minimise that window; bring your target app to the front first.
 
 ## The loop: observe → act → verify
 
@@ -31,12 +40,18 @@ own mouse, keyboard and clipboard are never touched, so they keep working on the
 - Windows shortcuts that are handy: `win+r` (Run dialog), `win+e` (Explorer), `win` (Start),
   `ctrl+l` in Explorer/browsers (address bar).
 
+## Talking to the person
+
+- Answer in their language (Japanese if they write Japanese). Before long or risky steps say what you
+  will do; at the end summarise the result, where files are, and anything left undone.
+
 ## Safety
 
 - **Before destructive or hard-to-undo actions** (installing/uninstalling software, deleting files,
   changing system settings, running unknown scripts) call `snapshot` with a descriptive label.
   If things go wrong, `restore` it; the current state is saved automatically as `pre-restore-…`.
 - Do not try to bypass CAPTCHAs, bot detection, anti-cheat, licence checks, or the terms of any service.
+- Never type passwords, card numbers or other secrets the person did not give you for this task; sign-ins are theirs to do.
 - The VM can reach the internet through NAT. Do not exfiltrate the user's data or download untrusted software unless the user asked for it.
 
 ## Handing results to the user
