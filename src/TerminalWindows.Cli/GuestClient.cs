@@ -71,7 +71,9 @@ public sealed class GuestClient : IAsyncDisposable
     public async Task<JsonObject> CallAsync(string op, JsonObject? args = null, TimeSpan? timeout = null)
     {
         var msg = await _rpc.RequestAsync(op, args, timeout: timeout);
-        return msg.Result as JsonObject ?? new JsonObject();
+        // Detach the result from the RPC envelope so callers can put it into their own JSON.
+        if (msg.Result is not JsonObject r) return new JsonObject();
+        return r.Parent is null ? r : (JsonObject)r.DeepClone();
     }
 
     public async Task<(JsonObject Info, byte[] Png)> ScreenshotAsync(int? maxWidth = null, int? maxHeight = null)
