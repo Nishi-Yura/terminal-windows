@@ -222,11 +222,15 @@ terminal-windows pull default
 
 ## 速くしたいとき
 
-WSL2、Docker Desktop、メモリ整合性などが有効な PC では、VirtualBox が Windows のハイパーバイザーを経由して動くため、**かなり遅くなります**（`doctor` が警告します）。
+WSL2、Docker Desktop、メモリ整合性などが有効な PC では、VirtualBox が Windows のハイパーバイザーを経由して動くため、**かなり遅くなります**（`doctor` が警告します）。実機では、Windows 11 のセットアップが再起動のあとで毎回固まりました。
 
-1. **ハイパーバイザーをオフにする（効果：大）**
-   - 管理者のターミナルで `bcdedit /set hypervisorlaunchtype off` を実行し、再起動します。元に戻すときは `auto` を指定します。
-   - オフの間は WSL2 と Docker が使えません。メモリ整合性もオフにする必要があり、ホストのセキュリティが下がります。ご自身で判断してください。
+1. **ハイパーバイザーをオフにする（効果：大。実質必須）**
+   - 「Windows セキュリティ」→「デバイス セキュリティ」→「コア分離」で、メモリ整合性をオフにします。
+   - 管理者のターミナルで `bcdedit /set hypervisorlaunchtype off` を実行し、再起動します。
+   - 再起動しても、PowerShell の `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent` が `True` のままなら、VBS（仮想化ベースのセキュリティ）が別の設定で有効になっています。実機では、Windows Hello の PIN 保護（`HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\WindowsHello` の `Enabled`）と `DeviceGuard` の `EnableVirtualizationBasedSecurity` を 0 にして、ようやく止まりました。
+   - 元に戻すときは、`bcdedit /set hypervisorlaunchtype auto` を実行し、上の値を 1 に戻し、メモリ整合性をオンにして再起動します。
+   - オフの間は、WSL2、Docker、Windows サンドボックスが使えません。ホストのセキュリティも下がるので、ご自身で判断してください。
+   - オフにすると、セットアップは約 35 分で終わりました（オンのときは数時間たっても終わりませんでした）。
 2. **VM の省電力スロットリングは自動で外します:** Windows 11 は、窓を出していない処理の CPU 速度とタイマー精度を省電力のために絞ります。これで VM の時計が何時間も遅れ、インストール中に固まりました。terminal-windows は、VM のプロセスだけこの制限を外します（Windows の設定は変えません）。CPU は 4 コアが標準で、`--cpus N` で変えられます（2 コアにすると、起動の途中で止まりました）。
    - VM が固まって作り直したいときは、`terminal-windows delete default --yes` で削除できます（ディスクとスナップショットも消えます）。
 3. **VM の中を軽くする:** `terminal-windows tune default --yes` を実行します（視覚効果、検索インデックス、SysMain などをオフ）。

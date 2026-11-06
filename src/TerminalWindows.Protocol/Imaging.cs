@@ -75,7 +75,11 @@ public static class Imaging
     public static (int W, int H) Fit(int w, int h, int maxW, int maxH)
     {
         double scale = Math.Min(1.0, Math.Min((double)maxW / w, (double)maxH / h));
-        return (Math.Max(1, (int)Math.Round(w * scale)), Math.Max(1, (int)Math.Round(h * scale)));
+        int fw = Math.Max(1, (int)Math.Round(w * scale)), fh = Math.Max(1, (int)Math.Round(h * scale));
+        // A box that is already the same aspect ratio up to rounding (e.g. ScreenSpace's image size) is
+        // used exactly, so callers that computed the size themselves get precisely that size back.
+        if (maxW <= w && maxH <= h && Math.Abs(fw - maxW) <= 1 && Math.Abs(fh - maxH) <= 1) return (maxW, maxH);
+        return (fw, fh);
     }
 
     /// <summary>Encodes an opaque RGB PNG (alpha dropped: the desktop is always opaque).</summary>

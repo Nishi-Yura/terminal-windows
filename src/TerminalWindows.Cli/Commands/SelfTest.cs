@@ -67,8 +67,16 @@ public static class SelfTest
 
         await Check("logged on to desktop", async () =>
         {
-            status = await c.CallAsync("status");
-            var s = status["session"]?.GetValue<string>();
+            // Right after a boot or resume the logon screen can still be up for a while; give it 90 s.
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(90);
+            string? s;
+            while (true)
+            {
+                status = await c.CallAsync("status");
+                s = status["session"]?.GetValue<string>();
+                if (s == "desktop" || DateTime.UtcNow > deadline) break;
+                await Task.Delay(2000);
+            }
             if (s != "desktop") throw new Exception($"session = {s} (lock/logon/secure desktop). The helper never unlocks; check the VM window.");
             return $"user {status["user"]}, input desktop {status["inputDesktop"]}";
         });
@@ -198,13 +206,29 @@ public static class SelfTest
             await c.CallAsync("key", new JsonObject { ["keys"] = "alt+f4" });
             await Task.Delay(1500);
             var fg = (await c.CallAsync("status"))["foregroundWindow"]?.GetValue<string>() ?? "";
+            string how = "alt+f4";
             if (fg.Contains("メモ帳") || fg.Contains("Notepad"))
             {
-                await c.CallAsync("key", new JsonObject { ["keys"] = "n" }); // "保存しない(N)" / "Don't save"
+                // The Windows 11 Notepad save prompt has no "N" accelerator; click "Don't save" by its UI rect.
+                var tree = await c.CallAsync("ui_tree", new JsonObject { ["depth"] = 12 }, TimeSpan.FromSeconds(30));
+                var dontSave = Flatten(tree).FirstOrDefault(n => n["controlType"]?.GetValue<string>() == "Button" &&
+                    (n["name"]?.GetValue<string>() is { } nm && (nm.StartsWith("保存しない") || nm.StartsWith("Don't save") || nm.StartsWith("Don’t save"))) &&
+                    n["rect"] is JsonArray);
+                if (dontSave is not null)
+                {
+                    var r = dontSave["rect"]!.AsArray().Select(v => v!.GetValue<int>()).ToArray();
+                    await c.CallAsync("click", new JsonObject { ["x"] = r[0] + r[2] / 2, ["y"] = r[1] + r[3] / 2 });
+                    how = "alt+f4, then clicked 'Don't save'";
+                }
+                else
+                {
+                    await c.CallAsync("exec", new JsonObject { ["script"] = "Stop-Process -Name Notepad -Force -ErrorAction SilentlyContinue", ["timeout_s"] = 30 }, TimeSpan.FromSeconds(60));
+                    how = "alt+f4 left it open; stopped the process";
+                }
                 await Task.Delay(1000);
                 fg = (await c.CallAsync("status"))["foregroundWindow"]?.GetValue<string>() ?? "";
             }
-            return fg.Contains("メモ帳") || fg.Contains("Notepad") ? $"WARN: Notepad still in front ({fg})" : $"foreground now: {fg}";
+            return fg.Contains("メモ帳") || fg.Contains("Notepad") ? $"WARN: Notepad still in front ({fg})" : $"{how}; foreground now: {fg}";
         });
 
         var tmp = Path.Combine(Path.GetTempPath(), "tw-selftest-" + stamp);
