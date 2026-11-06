@@ -135,6 +135,9 @@ public sealed class VmwareBackend : IVmBackend
             // Screen and keys during Windows Setup: the VM's own VNC server, loopback only, random password.
             ("RemoteDisplay.vnc.enabled", "TRUE"), ("RemoteDisplay.vnc.port", vncPort.ToString()),
             ("RemoteDisplay.vnc.ip", "127.0.0.1"), ("RemoteDisplay.vnc.password", vncPassword),
+            // Guest RAM from the host's normal memory/pagefile instead of a .vmem file of the same size
+            // next to the VM (saves several GB of disk while the VM runs).
+            ("mainMem.useNamedFile", "FALSE"),
             // Never stop on a dialog nobody can see (we run without a window).
             ("msg.autoAnswer", "TRUE"),
             // Display: without a window VMware derives the mode list from these, and the default
