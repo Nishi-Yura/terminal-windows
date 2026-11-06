@@ -220,6 +220,33 @@ public sealed class HelperServer
             case "ui_tree":
                 return Reply.Of(await UiaTree.GetAsync(a["window"]?.GetValue<string>(), I(a, "depth", 6), I(a, "max_nodes", 1500), TimeSpan.FromSeconds(20)));
 
+            case "uia_find":
+                return Reply.Of(await UiaActions.FindAsync(a));
+
+            case "uia_act":
+                RequireDesktop();
+                return Reply.Of(await UiaActions.ActAsync(a));
+
+            case "uia_text":
+                return Reply.Of(await UiaActions.TextAsync(a["window"]?.GetValue<string>(), I(a, "max_chars", 20000)));
+
+            case "windows":
+                return Reply.Of(await UiaActions.WindowsAsync());
+
+            case "window_focus":
+                RequireDesktop();
+                return Reply.Of(await UiaActions.FocusWindowAsync(S(a, "window")));
+
+            case "clipboard_get":
+                return Reply.Of(await UiaActions.ClipboardGetAsync());
+
+            case "clipboard_set":
+                return Reply.Of(await UiaActions.ClipboardSetAsync(S(a, "text")));
+
+            case "open":
+                RequireDesktop();
+                return Reply.Of(await UiaActions.OpenAsync(S(a, "target"), a["args"]?.GetValue<string>()));
+
             case "set_resolution":
                 return Reply.Of(SetResolution(I(a, "width"), I(a, "height")));
 

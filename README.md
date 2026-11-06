@@ -186,6 +186,15 @@ Claude Code などの MCP クライアントから、次のツールで VM を�
 | `click` / `drag` / `scroll` | マウス操作 |
 | `type` / `key` | 文字入力（日本語も可）、キー操作（`ctrl+s`、`win+r` など） |
 | `ui_tree` | UI Automation の要素ツリー（ボタンの名前と位置） |
+| `click_element` | ボタン・メニュー・タブ・リンクなどを**名前で**押す（座標の推測がいらない） |
+| `set_text` | 入力欄に文字を入れる（パスワード欄は拒否） |
+| `wait_for` | ダイアログやボタンが出る（消える）まで待つ |
+| `read_text` | 窓の文字を読む（スクリーンショットなしで、結果やエラー文を正確に） |
+| `find_element` | 名前・種類・AutomationId で部品を探す |
+| `list_windows` / `focus_window` | 窓の一覧、前面に出す |
+| `open` | アプリ・ファイル・フォルダ・URL を開く |
+| `clipboard_get` / `clipboard_set` | VM のクリップボード（ホストのものには触れません） |
+| `run_powershell` | VM の中で PowerShell を実行して結果を受け取る |
 | `wait` | 一定時間、または画面が変わるまで待つ |
 | `status` | VM の状態、ロック画面かどうか |
 | `snapshot` / `restore` | スナップショット、巻き戻し |

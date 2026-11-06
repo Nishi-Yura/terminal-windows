@@ -323,14 +323,7 @@ public static class Agent
         }
 
         await using var c = await GuestClient.ConnectAsync(m);
-        var all = steps.Append(("Write the in-VM instructions", InstructionsScript(agent, GuestSkillText()), 60)).ToList();
-        if (agent.Id == "claude")
-        {
-            // CLAUDE.md is always loaded (a skill only when it looks relevant): the short brief goes there.
-            all.Add(("Write the always-on brief (~/.claude/CLAUDE.md)",
-                InstructionsScript(agent with { InstructionsFile = @".claude\CLAUDE.md", InstructionsAsSkill = false }, GuestBriefText()), 60));
-            all.Add(("Allow the desktop tools without asking each time (~/.claude/settings.json)", ClaudeSettingsScript, 60));
-        }
+        var all = steps.Concat(PromptSteps(agent)).ToList();
         foreach (var (title, script, timeout) in all)
         {
             Console.Error.WriteLine($"==> {title}");
@@ -355,6 +348,33 @@ public static class Agent
         Console.WriteLine("     " + agent.SignInNote);
         Console.WriteLine("     Your sign-in is stored inside the VM, where the agent can read it.");
         return 0;
+    }
+
+    /// <summary>The instructions the in-VM agent reads (skill, always-on brief, tool permissions).</summary>
+    private static List<(string Title, string Script, int Timeout)> PromptSteps(AgentProfile agent)
+    {
+        var all = new List<(string, string, int)> { ("Write the in-VM instructions", InstructionsScript(agent, GuestSkillText()), 60) };
+        if (agent.Id == "claude")
+        {
+            // CLAUDE.md is always loaded (a skill only when it looks relevant): the short brief goes there.
+            all.Add(("Write the always-on brief (~/.claude/CLAUDE.md)",
+                InstructionsScript(agent with { InstructionsFile = @".claude\CLAUDE.md", InstructionsAsSkill = false }, GuestBriefText()), 60));
+            all.Add(("Allow the desktop tools without asking each time (~/.claude/settings.json)", ClaudeSettingsScript, 60));
+        }
+        return all;
+    }
+
+    /// <summary>Rewrites the in-VM agent's instructions from this build (after the host tool is updated).</summary>
+    public static async Task RefreshPromptsAsync(MachineConfig m)
+    {
+        if (m.Agent is null or "none") return;
+        await using var c = await GuestClient.ConnectAsync(m);
+        foreach (var (title, script, timeout) in PromptSteps(Profile(m.Agent)))
+        {
+            var r = await RunScriptAsync(c, script, timeout);
+            if (r["exitCode"]?.GetValue<int>() != 0)
+                throw new CliException($"{title} failed: {(r["stderr"]?.GetValue<string>() ?? "").Trim()}");
+        }
     }
 
     public static Task<int> CodexAsync(ParsedArgs a) => OpenTerminalAsync(a, defaultCommand: "codex", prefix: "codex");

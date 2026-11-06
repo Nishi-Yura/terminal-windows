@@ -26,7 +26,8 @@ public sealed class McpServer
     private static readonly string Instructions =
         "Controls an AI-dedicated Windows VM (VirtualBox or VMware Workstation). Actions affect only the VM, never the host. " +
         "Start every session with read_notes. Loop: screenshot -> act -> screenshot to verify. " +
-        "Coordinates are pixels of the latest screenshot image. Use ui_tree to locate controls precisely. " +
+        "Coordinates are pixels of the latest screenshot image. Prefer the element tools (click_element, set_text, wait_for, read_text) " +
+        "over pixel clicks when the control has a name; use run_powershell for files and settings. " +
         "Take a snapshot before destructive changes. Put deliverables in Desktop\\Outbox and call export_file. " +
         "If status reports a lock/logon screen, stop and tell the user. Record progress with append_notes.";
 
@@ -261,10 +262,89 @@ public sealed class McpServer
                 return Text("appended");
             }
 
+            case "find_element":
+            case "click_element":
+            case "set_text":
+            case "read_text":
+            case "list_windows":
+            case "focus_window":
+            case "clipboard_get":
+            case "clipboard_set":
+            case "open":
+            {
+                var c = await ClientAsync();
+                var (op, args, timeout) = name switch
+                {
+                    "find_element" => ("uia_find", a, 30),
+                    "click_element" => ("uia_act", a, 30),
+                    "set_text" => ("uia_act", WithAction(a, "set_value"), 120),
+                    "read_text" => ("uia_text", a, 45),
+                    "list_windows" => ("windows", a, 30),
+                    "focus_window" => ("window_focus", a, 30),
+                    "clipboard_get" => ("clipboard_get", a, 15),
+                    "clipboard_set" => ("clipboard_set", a, 15),
+                    _ => ("open", a, 30),
+                };
+                JsonObject r;
+                try { r = await c.CallAsync(op, (JsonObject)args.DeepClone(), TimeSpan.FromSeconds(timeout)); }
+                catch (RpcException ex) when (ex.Message.Contains("Unknown op"))
+                {
+                    throw new CliException("The helper in the VM is older than this tool. Run 'terminal-windows update-helper' on the host (or restart the VM from terminal-windows).");
+                }
+                ScaleRects(r, await SpaceAsync(c));
+                if (name is "find_element" or "click_element" or "set_text" or "list_windows") r["coordinates"] = "screenshot pixels";
+                return Json(r);
+            }
+
+            case "wait_for":
+            {
+                var c = await ClientAsync();
+                bool gone = a["gone"]?.GetValue<bool>() == true;
+                int timeout = Math.Clamp(OptI(a, "timeout_ms", 30_000), 0, 300_000);
+                var query = (JsonObject)a.DeepClone();
+                query.Remove("gone");
+                query.Remove("timeout_ms");
+                query["max"] = 1;
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                while (true)
+                {
+                    JsonObject r;
+                    try { r = await c.CallAsync("uia_find", (JsonObject)query.DeepClone(), TimeSpan.FromSeconds(30)); }
+                    catch (RpcException ex) when (ex.Message.Contains("No window title contains") && !gone) { r = new JsonObject { ["count"] = 0 }; }
+                    catch (RpcException ex) when (ex.Message.Contains("No window title contains") && gone) { return Text($"gone after {sw.ElapsedMilliseconds} ms (its window closed)"); }
+                    bool present = r["count"]?.GetValue<int>() > 0;
+                    if (present != gone)
+                    {
+                        ScaleRects(r, await SpaceAsync(c));
+                        r["coordinates"] = "screenshot pixels";
+                        r["waitedMs"] = sw.ElapsedMilliseconds;
+                        return gone ? Text($"gone after {sw.ElapsedMilliseconds} ms") : Json(r);
+                    }
+                    if (sw.ElapsedMilliseconds >= timeout)
+                        return Text(gone ? $"still there after {timeout} ms" : $"not found within {timeout} ms (take a screenshot to see what is on screen)", isError: true);
+                    await Task.Delay(500);
+                }
+            }
+
+            case "run_powershell":
+            {
+                var c = await ClientAsync();
+                int t = Math.Clamp(OptI(a, "timeout_s", 120), 1, 1800);
+                var r = await c.CallAsync("exec", new JsonObject { ["script"] = S(a, "script"), ["timeout_s"] = t }, TimeSpan.FromSeconds(t + 30));
+                return Json(r);
+            }
+
             default:
                 throw new ArgumentException($"Unknown tool '{name}'");
         }
     }
 
     private static void ScaleRects(JsonNode? node, ScreenSpace s) => s.ScaleRects(node);
+
+    private static JsonObject WithAction(JsonObject a, string action)
+    {
+        var o = (JsonObject)a.DeepClone();
+        o["action"] = action;
+        return o;
+    }
 }

@@ -25,18 +25,21 @@ public readonly record struct ScreenSpace(int ScreenWidth, int ScreenHeight)
     public int ToScreenY(int y) => Math.Clamp((int)Math.Round(y / Scale), 0, ScreenHeight - 1);
     public int FromScreen(double v) => (int)Math.Round(v * Scale);
 
+    /// <summary>A JSON number whether it was parsed from text (JsonElement) or built in memory (int, double).</summary>
+    private static double Num(JsonNode v) => double.Parse(v.ToJsonString(), System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>Rescales every "rect" ([x, y, w, h] in screen pixels) inside a UI Automation tree to screenshot pixels.</summary>
     public void ScaleRects(JsonNode? node)
     {
         if (node is JsonObject o)
         {
+            var self = this;
             if (o["rect"] is JsonArray r && r.Count == 4)
-            {
-                var self = this;
-                o["rect"] = new JsonArray(r.Select(v => (JsonNode)self.FromScreen(v!.GetValue<double>())).ToArray());
-            }
+                o["rect"] = new JsonArray(r.Select(v => (JsonNode)self.FromScreen(Num(v!))).ToArray());
+            if (o["center"] is JsonArray c && c.Count == 2)
+                o["center"] = new JsonArray(c.Select(v => (JsonNode)self.FromScreen(Num(v!))).ToArray());
             foreach (var kv in o.ToList())
-                if (kv.Key != "rect") ScaleRects(kv.Value);
+                if (kv.Key is not ("rect" or "center")) ScaleRects(kv.Value);
         }
         else if (node is JsonArray arr)
         {
@@ -150,5 +153,60 @@ public static class McpStdio
     private static JsonObject Error(JsonNode? id, int code, string message) => new()
     {
         ["jsonrpc"] = "2.0", ["id"] = id, ["error"] = new JsonObject { ["code"] = code, ["message"] = message },
+    };
+}
+
+/// <summary>
+/// Element-level tools shared by the host MCP server and the in-guest desktop MCP server: find and act on
+/// controls by name (UI Automation) instead of pixels, read a window's text, windows, clipboard, opening apps.
+/// </summary>
+public static class DesktopTools
+{
+    private static JsonObject Int(string d) => new() { ["type"] = "integer", ["description"] = d };
+    private static JsonObject Str(string d) => new() { ["type"] = "string", ["description"] = d };
+    private static JsonObject Bool(string d) => new() { ["type"] = "boolean", ["description"] = d };
+
+    private static JsonObject Query(JsonObject? extra = null)
+    {
+        var o = new JsonObject
+        {
+            ["name"] = Str("visible name / label of the control (case-insensitive; partial match unless exact=true)"),
+            ["control_type"] = Str("Button, Edit, MenuItem, ListItem, TabItem, Hyperlink, CheckBox, ComboBox, TreeItem, Document, ..."),
+            ["automation_id"] = Str("AutomationId (from ui_tree / find_element)"),
+            ["window"] = Str("title substring or hwnd of the window to search (default: the foreground window; 'desktop' = everything)"),
+            ["exact"] = Bool("match the name exactly"),
+        };
+        if (extra is not null) foreach (var kv in extra.ToList()) { extra.Remove(kv.Key); o[kv.Key] = kv.Value; }
+        return o;
+    }
+
+    public static readonly string[] Names =
+        { "find_element", "click_element", "set_text", "wait_for", "read_text", "list_windows", "focus_window", "clipboard_get", "clipboard_set", "open" };
+
+    public static IEnumerable<JsonObject> Definitions() => new[]
+    {
+        McpResult.Tool("find_element", "Find controls by name / type / AutomationId with UI Automation. Returns name, type, rect and center (screenshot pixels), enabled, value. Visible matches come first.",
+            Query(new JsonObject { ["max"] = Int("max matches (default 20)") })),
+        McpResult.Tool("click_element", "Find a control and act on it in one step. Default action 'click' clicks its center with the real pointer (falls back to Invoke when it is off screen). " +
+            "Other actions: double_click, right_click, invoke, toggle, select, expand, collapse, focus. More reliable than guessing pixels.",
+            Query(new JsonObject
+            {
+                ["action"] = new JsonObject { ["type"] = "string", ["enum"] = new JsonArray("click", "double_click", "right_click", "invoke", "toggle", "select", "expand", "collapse", "focus"), ["default"] = "click" },
+                ["index"] = Int("which match to use when several match (0 = best, default)"),
+            })),
+        McpResult.Tool("set_text", "Put text into an input control (replaces its content). Uses the UI Automation value when possible, otherwise focuses it, selects all and types. Refuses password fields.",
+            Query(new JsonObject { ["value"] = Str("the text"), ["index"] = Int("which match (default 0)") }), "value"),
+        McpResult.Tool("wait_for", "Wait until a control appears (or with gone=true disappears), e.g. a dialog, a 'Done' label or a button becoming available. Polls up to timeout_ms.",
+            Query(new JsonObject { ["gone"] = Bool("wait for it to disappear"), ["timeout_ms"] = Int("max wait (default 30000, max 300000)") })),
+        McpResult.Tool("read_text", "Read the text of a window (labels, values, document text) without a screenshot. Cheaper and exact; use it to read results, error messages and forms.",
+            new JsonObject { ["window"] = Str("title substring or hwnd (default: foreground window)"), ["max_chars"] = Int("default 20000") }),
+        McpResult.Tool("list_windows", "List the top-level windows: title, process, hwnd, rect, minimized/maximized, which is in front.", new JsonObject()),
+        McpResult.Tool("focus_window", "Bring a window to the front (restores it if minimized).",
+            new JsonObject { ["window"] = Str("title substring or hwnd") }, "window"),
+        McpResult.Tool("clipboard_get", "Read the VM's clipboard text (the VM's own clipboard; the host's is never touched).", new JsonObject()),
+        McpResult.Tool("clipboard_set", "Set the VM's clipboard text (then paste with key 'ctrl+v'). Good for long or multi-line text.",
+            new JsonObject { ["text"] = Str("text") }, "text"),
+        McpResult.Tool("open", "Open an app, file, folder or URL as the Run box would: 'notepad', 'ms-settings:display', 'https://...', 'C:\\Users\\...\\file.xlsx', '%USERPROFILE%\\Desktop'.",
+            new JsonObject { ["target"] = Str("program, path or URL"), ["args"] = Str("optional arguments") }, "target"),
     };
 }

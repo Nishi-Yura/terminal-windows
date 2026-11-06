@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using TerminalWindows.Protocol;
 
 namespace TerminalWindows.Cli.Mcp;
 
@@ -20,7 +21,20 @@ public static class McpTools
     private static JsonObject Int(string d) => new() { ["type"] = "integer", ["description"] = d };
     private static JsonObject Str(string d) => new() { ["type"] = "string", ["description"] = d };
 
-    public static JsonArray Definitions() => new(
+    public static JsonArray Definitions()
+    {
+        var list = Base();
+        foreach (var t in DesktopTools.Definitions()) list.Add(t);
+        list.Add(Tool("run_powershell", "Run a PowerShell script inside the VM (as the VM's user, elevated) and return stdout, stderr and the exit code. " +
+            "Best for files, settings, installs and checks; use the GUI tools for apps.", new JsonObject
+        {
+            ["script"] = Str("PowerShell script"),
+            ["timeout_s"] = Int("timeout in seconds (default 120, max 1800)"),
+        }, "script"));
+        return list;
+    }
+
+    private static JsonArray Base() => new(
         Tool("screenshot", "Capture the VM screen as PNG. Returns the image and its size; all other tools use this image's pixel coordinates.", new JsonObject()),
         Tool("click", "Click at (x, y) in screenshot pixels.", new JsonObject
         {

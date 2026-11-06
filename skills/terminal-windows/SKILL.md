@@ -1,6 +1,6 @@
 ---
 name: terminal-windows
-description: Operate the AI-dedicated Windows VM (terminal-windows, on VirtualBox or VMware Workstation) through its MCP tools - take screenshots, click, type, read UI Automation trees, take snapshots, hand files to the user via the Outbox, and keep work notes. Use whenever a task must be done in a Windows GUI without touching the user's own PC.
+description: Operate the AI-dedicated Windows VM (terminal-windows, on VirtualBox or VMware Workstation) through its MCP tools - screenshots, clicking controls by name, filling fields, reading window text, opening apps, running PowerShell in the VM, snapshots, handing files to the user via the Outbox, and work notes. Use whenever a task must be done in a Windows GUI without touching the user's own PC.
 ---
 
 # terminal-windows: operating the AI Windows VM
@@ -18,10 +18,18 @@ own mouse, keyboard and clipboard are never touched, so they keep working on the
 
 ## Choose the cheapest way that works
 
-- A GUI is slow and expensive (every step needs a screenshot). Use it for GUI-only apps and pages that
-  need a real browser. If the task is really about files, installs or scripts, say so and suggest the
-  person run it with an AI *inside* the VM (`terminal-windows claude --window`), which has a shell there.
-- `ui_tree` is cheaper than a screenshot when you only need to find a control or read text.
+1. **`run_powershell`** for files, installs (`winget install --id X -e --accept-source-agreements --accept-package-agreements`),
+   settings, registry, services and checks. Exact, fast, and it returns the output.
+2. **Element tools** for GUI apps — they work by the control's name, so no pixel guessing:
+   - `open` starts an app / file / folder / URL (`notepad`, `ms-settings:display`, `https://…`).
+   - `click_element` (name / control_type / automation_id) clicks a button, menu item, tab, link, list item.
+   - `set_text` fills an input box (replaces its content; refuses password fields).
+   - `wait_for` waits for a dialog, label or button to appear (`gone: true` to disappear).
+   - `read_text` reads a window's text (results, error messages, forms) without a screenshot.
+   - `find_element` / `ui_tree` when you need to see what is there; `list_windows` / `focus_window` for windows.
+   - `clipboard_set` + `key ctrl+v` for long or multi-line text; `clipboard_get` to read what an app copied.
+3. **Pixels** (`screenshot`, `click`, `drag`, `scroll`, `type`, `key`) when a control has no usable name
+   (canvases, games, custom-drawn UI) or to check how something looks.
 - An AI may already be working inside the VM in a "Claude Code" / "Codex" / "Gemini CLI" terminal
   window. Do not type into, close or minimise that window; bring your target app to the front first.
 
@@ -31,9 +39,9 @@ own mouse, keyboard and clipboard are never touched, so they keep working on the
   Never chain many clicks blindly; screens change (dialogs, loading, focus).
 - Coordinates are **pixels of the latest screenshot image** (top-left is 0,0). The server converts
   them to the guest's real resolution, so use the numbers you see in the image directly.
-- Prefer `ui_tree` when you need precise targets (small buttons, list items, text fields):
-  each node has `name`, `controlType`, `rect = [x, y, width, height]` in the same screenshot pixels.
-  Click the centre: `x + width/2`, `y + height/2`. Use `window: "desktop"` to list top-level windows.
+- Element results carry `rect = [x, y, width, height]` and `center` in the same screenshot pixels.
+  When several controls match, the visible ones come first; pass `index` or narrow with `control_type` / `window`.
+- If an element tool says the helper is older than the tool, ask the person to run `terminal-windows update-helper`.
 - `type` sends Unicode text directly (Japanese works without the IME). Click the field first.
 - `key` takes chords: `enter`, `ctrl+s`, `win+r`, `alt+f4`, `ctrl+shift+esc`, several separated by spaces.
 - After launching something slow, use `wait` with `until_change: true` instead of guessing a delay.

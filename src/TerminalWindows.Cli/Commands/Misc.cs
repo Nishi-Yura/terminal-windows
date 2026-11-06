@@ -172,7 +172,21 @@ public static class SnapshotCommands
         await using var c = await GuestClient.ConnectAsync(m);
         var ok = await c.UpdateHelperAsync(exe);
         Console.WriteLine(ok ? "Helper update accepted; it restarts in a few seconds." : "Helper rejected the update (hash mismatch).");
-        return ok ? 0 : 1;
+        if (!ok) return 1;
+        await c.DisposeAsync();
+        if (m.Agent is not null and not "none")
+        {
+            // Same pacing as the automatic update: the old helper keeps answering until it exits.
+            await Task.Delay(4000);
+            for (int attempt = 1; ; attempt++)
+            {
+                await new MachineManager(log: _ => { }).WaitForHelperAsync(m, TimeSpan.FromMinutes(2));
+                try { await Agent.RefreshPromptsAsync(m); break; }
+                catch (Exception ex) when (attempt < 5 && ex is IOException or CliException or RpcException) { await Task.Delay(3000); }
+            }
+            Console.WriteLine($"Updated the in-VM {m.Agent} instructions (skill, brief, tool permissions).");
+        }
+        return 0;
     }
 }
 

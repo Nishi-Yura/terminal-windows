@@ -17,7 +17,7 @@ public sealed class DesktopMcp
     private const string Instructions =
         "You are running INSIDE a disposable Windows VM dedicated to AI work; these tools drive this VM's own desktop. " +
         "Loop: screenshot -> act -> screenshot to verify. Coordinates are pixels of the latest screenshot image. " +
-        "Use ui_tree to find controls precisely. Prefer shell commands for file and system work; use the GUI tools for apps. " +
+        "Prefer the element tools (click_element, set_text, wait_for, read_text) over pixel clicks when a control has a name. Prefer shell commands for file and system work; use the GUI tools for apps. " +
         "Put deliverables in %USERPROFILE%\\Desktop\\Outbox. Files from the person arrive in %USERPROFILE%\\Desktop\\Inbox. " +
         "Snapshots/restores are done by the person on the host: ask them before destructive changes. " +
         "If status reports a lock/logon screen, stop and tell the person.";
@@ -115,6 +115,57 @@ public sealed class DesktopMcp
                         ["captureBackend"] = _capture.Backend,
                     });
                 }
+                case "find_element":
+                    return Scaled(await UiaActions.FindAsync(a), s);
+                case "click_element":
+                    RequireDesktop();
+                    return Scaled(await UiaActions.ActAsync(a), s);
+                case "set_text":
+                {
+                    RequireDesktop();
+                    var o = (JsonObject)a.DeepClone();
+                    o["action"] = "set_value";
+                    return Scaled(await UiaActions.ActAsync(o), s);
+                }
+                case "read_text":
+                    return McpResult.Json(await UiaActions.TextAsync(a["window"]?.GetValue<string>(), OptI(a, "max_chars", 20000)));
+                case "list_windows":
+                    return Scaled(await UiaActions.WindowsAsync(), s);
+                case "focus_window":
+                    RequireDesktop();
+                    return McpResult.Json(await UiaActions.FocusWindowAsync(S(a, "window")));
+                case "clipboard_get":
+                    return McpResult.Json(await UiaActions.ClipboardGetAsync());
+                case "clipboard_set":
+                    return McpResult.Json(await UiaActions.ClipboardSetAsync(S(a, "text")));
+                case "open":
+                    RequireDesktop();
+                    return McpResult.Json(await UiaActions.OpenAsync(S(a, "target"), a["args"]?.GetValue<string>()));
+                case "wait_for":
+                {
+                    bool gone = a["gone"]?.GetValue<bool>() == true;
+                    int timeout = Math.Clamp(OptI(a, "timeout_ms", 30_000), 0, 300_000);
+                    var q = (JsonObject)a.DeepClone();
+                    q.Remove("gone");
+                    q.Remove("timeout_ms");
+                    q["max"] = 1;
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    while (true)
+                    {
+                        JsonObject r;
+                        try { r = await UiaActions.FindAsync((JsonObject)q.DeepClone()); }
+                        catch (ArgumentException ex) when (ex.Message.StartsWith("No window title contains")) { r = new JsonObject { ["count"] = 0 }; }
+                        bool present = r["count"]?.GetValue<int>() > 0;
+                        if (present != gone)
+                        {
+                            r["waitedMs"] = sw.ElapsedMilliseconds;
+                            return gone ? McpResult.Text($"gone after {sw.ElapsedMilliseconds} ms") : Scaled(r, s);
+                        }
+                        if (sw.ElapsedMilliseconds >= timeout)
+                            return McpResult.Text(gone ? $"still there after {timeout} ms" : $"not found within {timeout} ms (take a screenshot to see what is on screen)", isError: true);
+                        await Task.Delay(500);
+                    }
+                }
                 default:
                     throw new ArgumentException($"Unknown tool '{name}'");
             }
@@ -125,11 +176,25 @@ public sealed class DesktopMcp
         }
     }
 
+    private static JsonObject Scaled(JsonObject r, ScreenSpace s)
+    {
+        s.ScaleRects(r);
+        r["coordinates"] = "screenshot pixels";
+        return r is { } ? McpResult.Json(r) : McpResult.Text("ok");
+    }
+
     private static JsonObject Int(string d) => new() { ["type"] = "integer", ["description"] = d };
     private static JsonObject Str(string d) => new() { ["type"] = "string", ["description"] = d };
     private static JsonObject Button() => new() { ["type"] = "string", ["enum"] = new JsonArray("left", "right", "middle"), ["default"] = "left" };
 
-    public static JsonArray Tools() => new(
+    public static JsonArray Tools()
+    {
+        var list = BaseTools();
+        foreach (var t in DesktopTools.Definitions()) list.Add(t);
+        return list;
+    }
+
+    private static JsonArray BaseTools() => new(
         McpResult.Tool("screenshot", "Capture this VM's screen as PNG. All other tools use this image's pixel coordinates.", new JsonObject()),
         McpResult.Tool("click", "Click at (x, y) in screenshot pixels. count 2 = double click, 3 = triple click.", new JsonObject
         {
