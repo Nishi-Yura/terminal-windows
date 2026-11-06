@@ -27,7 +27,7 @@ public static class PayloadIso
         ["locale"] = m.Locale,
         ["user"] = m.User,
         ["password"] = password,
-        ["allowedRemote"] = Protocol.ProtocolConstants.NatSubnet,
+        ["allowedRemote"] = m.AllowedRemote ?? Protocol.ProtocolConstants.NatSubnet,
     };
 
     public const string SetupCmd = "@echo off\r\n" +

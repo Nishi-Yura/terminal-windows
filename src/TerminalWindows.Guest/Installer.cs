@@ -185,11 +185,15 @@ public static class Installer
         Directory.CreateDirectory(Path.Combine(desktop, "Inbox"));
     }
 
+    /// <summary>The configured source range (VirtualBox NAT or VMware's vmnet8 subnet); anything odd falls back to VirtualBox NAT.</summary>
+    private static string SafeRemote(string? cidr) =>
+        cidr is not null && System.Text.RegularExpressions.Regex.IsMatch(cidr, @"^\d{1,3}(\.\d{1,3}){3}(/\d{1,2})?$") ? cidr : ProtocolConstants.NatSubnet;
+
     private static void ConfigureFirewall(GuestConfig c)
     {
         const string rule = "terminal-windows helper";
         Exec("netsh.exe", $"advfirewall firewall delete rule name=\"{rule}\"");
-        Exec("netsh.exe", $"advfirewall firewall add rule name=\"{rule}\" dir=in action=allow protocol=TCP localport={c.Port} remoteip={ProtocolConstants.NatSubnet} program=\"{GuestPaths.InstalledExe}\" profile=any");
+        Exec("netsh.exe", $"advfirewall firewall add rule name=\"{rule}\" dir=in action=allow protocol=TCP localport={c.Port} remoteip={SafeRemote(c.AllowedRemote)} program=\"{GuestPaths.InstalledExe}\" profile=any");
         if (c.Offline)
         {
             // "Don't reach the internet by accident" only — the agent has admin rights and could undo this.
@@ -245,12 +249,19 @@ public static class Installer
     {
         // VBoxGuestAdditions.iso ships with VirtualBox itself (not the Extension Pack).
         // Clipboard, drag & drop and shared folders stay disabled on the host side.
-        var drive = DriveInfo.GetDrives()
-            .Where(d => d.DriveType == DriveType.CDRom && d.IsReady)
-            .FirstOrDefault(d => File.Exists(Path.Combine(d.RootDirectory.FullName, "VBoxWindowsAdditions.exe")));
+        var cds = DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.CDRom && d.IsReady).ToList();
+        // VMware: the VMware Tools disc (display driver for any resolution, time sync).
+        var tools = cds.FirstOrDefault(d => File.Exists(Path.Combine(d.RootDirectory.FullName, "setup64.exe"))
+                                            && File.Exists(Path.Combine(d.RootDirectory.FullName, "VMwareToolsUpgrader.exe")));
+        if (tools is not null)
+        {
+            Exec(Path.Combine(tools.RootDirectory.FullName, "setup64.exe"), "/S /v \"/qn REBOOT=R\"", timeoutMinutes: 15, captureOutput: false);
+            return;
+        }
+        var drive = cds.FirstOrDefault(d => File.Exists(Path.Combine(d.RootDirectory.FullName, "VBoxWindowsAdditions.exe")));
         if (drive is null)
         {
-            Log.Write("Guest Additions ISO not found; skipping");
+            Log.Write("No Guest Additions / VMware Tools disc found; skipping");
             return;
         }
         var root = drive.RootDirectory.FullName;

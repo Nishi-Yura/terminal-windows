@@ -26,7 +26,8 @@ public static class Lifecycle
         ShareWritable: a.Flag("share-writable"),
         Edition: a.Opt("edition"),
         DiskBus: VirtualBoxBackend.ValidateDiskBus(a.Opt("disk-bus") ?? "sata"),
-        Paravirt: VirtualBoxBackend.ValidateParavirt(a.Opt("paravirt")));
+        Paravirt: VirtualBoxBackend.ValidateParavirt(a.Opt("paravirt")),
+        Backend: a.Opt("backend") is { } be ? Backends.Validate(be) : null);
 
     /// <summary>8 GB for the guest on 16 GB+ hosts, 6 GB below that (the spec allows 6-8 GB).</summary>
     public static int DefaultMemoryGb() => Doctor.TotalMemoryGb() >= 15.9 ? 8 : 6;
@@ -138,7 +139,7 @@ public static class Lifecycle
     {
         var m = MachineStore.Load(a.Pos(0, "NAME"));
         a.RejectUnknown();
-        var b = new VirtualBoxBackend();
+        var b = new RoutedBackend();
         if (pause) await b.PauseAsync(m.VmName); else await b.ResumeAsync(m.VmName);
         Console.WriteLine(pause ? "paused" : "resumed");
         return 0;
@@ -186,7 +187,7 @@ public static class Lifecycle
     {
         var m = MachineStore.Load(a.Pos(0, "NAME"));
         a.RejectUnknown();
-        var b = new VirtualBoxBackend();
+        var b = new RoutedBackend();
         if (show) await b.ShowWindowAsync(m.VmName); else await b.HideWindowAsync(m.VmName);
         return 0;
     }
@@ -194,7 +195,7 @@ public static class Lifecycle
     public static async Task<int> ListAsync(ParsedArgs a)
     {
         a.RejectUnknown();
-        var b = new VirtualBoxBackend();
+        var b = new RoutedBackend();
         var arr = new JsonArray();
         foreach (var n in MachineStore.List())
         {
@@ -217,7 +218,7 @@ public static class Lifecycle
         var state = await mgr.Backend.GetStateAsync(m.VmName);
         var o = new JsonObject
         {
-            ["name"] = m.Name, ["vm"] = m.VmName, ["state"] = state.ToString(), ["setupComplete"] = m.SetupComplete,
+            ["name"] = m.Name, ["vm"] = m.VmName, ["backend"] = m.Backend, ["state"] = state.ToString(), ["setupComplete"] = m.SetupComplete,
             ["hostPort"] = m.HostPort, ["cpus"] = m.Cpus, ["memoryGb"] = m.MemoryGb, ["resolution"] = $"{m.Width}x{m.Height}",
             ["offline"] = m.Offline, ["autoSnapshot"] = m.AutoSnapshot, ["dataDir"] = MachineStore.MachineDir(m.Name),
         };

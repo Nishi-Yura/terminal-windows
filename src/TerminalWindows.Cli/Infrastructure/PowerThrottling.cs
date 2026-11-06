@@ -12,7 +12,7 @@ namespace TerminalWindows.Cli.Infrastructure;
 /// </summary>
 public static class PowerThrottling
 {
-    private static readonly string[] VmProcessNames = { "VBoxHeadless", "VirtualBoxVM" };
+    private static readonly string[] VmProcessNames = { "VBoxHeadless", "VirtualBoxVM", "vmware-vmx" };
 
     private const int ProcessPowerThrottling = 4;
     private const uint PROCESS_POWER_THROTTLING_CURRENT_VERSION = 1;

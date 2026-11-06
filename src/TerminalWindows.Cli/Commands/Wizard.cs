@@ -84,8 +84,8 @@ public static class Wizard
                                      "CPU virtualization (Intel VT-x / AMD-V) is disabled in the BIOS/UEFI. Enable it in the firmware settings and open this again."));
         InstallSelf();
         if (DryRun) return await DryRunReportAsync();
-        if (!await EnsureVirtualBoxAsync()) return 1;
-        if (!await EnsureFastHostAsync()) return 0; // restarting, or the user stopped here
+        var backend = await ChooseBackendAsync();
+        if (backend is null) return 0; // restarting, installing VMware, or the user stopped here
         CheckDiskSpace();
 
         if (!MachineStore.Exists(Name) || !MachineStore.Load(Name).SetupComplete)
@@ -101,7 +101,7 @@ public static class Wizard
             SaveState(state);
             Step(T("Windows 11 を VM に入れます（30〜60 分。PC はつけたままにしてください）",
                    "Installing Windows 11 in the VM (30-60 minutes; keep the PC on)"));
-            await Lifecycle.CreateAsync(Args(Name, "--iso", iso));
+            await Lifecycle.CreateAsync(Args(Name, "--iso", iso, "--backend", backend));
         }
 
         var agentId = state["agent"]?.GetValue<string>() ?? "claude";
@@ -198,6 +198,49 @@ public static class Wizard
         }
     }
 
+    /// <summary>
+    /// VMware Workstation if it is installed and needed (Windows' hypervisor on) or the only one present;
+    /// otherwise VirtualBox, installing it and turning the hypervisor off when the user agrees. With the
+    /// hypervisor on and no VMware, the user picks: turn it off (VirtualBox) or install VMware (keeps WSL2/Docker).
+    /// </summary>
+    private static async Task<string?> ChooseBackendAsync()
+    {
+        bool hv = Doctor.HypervisorPresent();
+        if (VmwareBackend.IsInstalled() && (hv || VirtualBoxBackend.InstallDir() is null))
+        {
+            Step(T("VMware Workstation を使います", "Using VMware Workstation"));
+            return Backends.Vmware;
+        }
+        if (hv)
+        {
+            Step(T("この PC では Windows のハイパーバイザーが動いています", "Windows' own hypervisor is running on this PC"));
+            Console.WriteLine(T(
+                "  （メモリ整合性・VBS・WSL2 などのため）。このままでは VirtualBox がとても遅く、固まることがあります。次のどちらかを選んでください。\n" +
+                "  1) ハイパーバイザーをオフにして VirtualBox を使う（速い。WSL2 / Docker は使えなくなり、メモリ整合性などの保護も外れます。管理者の確認と再起動が必要）\n" +
+                "  2) VMware Workstation Pro を入れて使う（オンのままで動く。個人利用は無料ですが、Broadcom のアカウント登録が必要）",
+                "  (for memory integrity / VBS / WSL2). VirtualBox is very slow and can hang like this. Choose one:\n" +
+                "  1) Turn the hypervisor off and use VirtualBox (fast; WSL2 / Docker stop working and memory integrity is off; admin approval and a restart)\n" +
+                "  2) Install VMware Workstation Pro and use it (works with the hypervisor on; free for personal use, needs a Broadcom account)"));
+            foreach (var w in HostMode.ConflictsForWizard()) Console.WriteLine("  ! " + w);
+            Console.Write(T("  番号 [1]: ", "  Number [1]: "));
+            if ((Console.ReadLine() ?? "").Trim() == "2")
+            {
+                Console.WriteLine(T(
+                    "  Broadcom のサポートポータルを開きます。サインイン（またはアカウント登録）して「VMware Workstation Pro」の Windows 版をダウンロードし、\n" +
+                    "  インストールしてください（個人利用を選びます）。終わったら terminal-windows.exe をもう一度開くと続きから進みます。",
+                    "  Opening Broadcom's support portal. Sign in (or register), download VMware Workstation Pro for Windows and install it\n" +
+                    "  (choose personal use). Then open terminal-windows.exe again to continue."));
+                Process.Start(new ProcessStartInfo("https://support.broadcom.com/") { UseShellExecute = true });
+                return null;
+            }
+            if (!await EnsureVirtualBoxAsync()) return null;
+            if (!await EnsureFastHostAsync()) return null;
+            return Backends.VirtualBox;
+        }
+        if (!await EnsureVirtualBoxAsync()) return null;
+        return Backends.VirtualBox;
+    }
+
     private static async Task<bool> EnsureVirtualBoxAsync()
     {
         var info = await new VirtualBoxBackend().ProbeAsync();
@@ -235,19 +278,10 @@ public static class Wizard
     private static async Task<bool> EnsureFastHostAsync()
     {
         if (!Doctor.HypervisorPresent()) return true;
-        Step(T("この PC では Windows のハイパーバイザーが動いています", "Windows' own hypervisor is running on this PC"));
-        Console.WriteLine(T(
-            "  メモリ整合性・VBS・WSL2 などのためです。このままだと VM がとても遅く、セットアップの途中で固まることがあります。\n" +
-            "  オフにすると速くなりますが、オフの間は WSL2 / Docker / Windows サンドボックスが使えず、メモリ整合性などの保護も外れます。\n" +
-            "  あとで `terminal-windows host-mode secure --yes`（管理者）でいつでも元に戻せます。",
-            "  It is on for memory integrity / VBS / WSL2. VirtualBox then runs very slowly and Windows setup can hang.\n" +
-            "  Turning it off makes VMs fast, but WSL2 / Docker / Windows Sandbox stop working and memory integrity protection is off.\n" +
-            "  Undo any time with `terminal-windows host-mode secure --yes` (admin)."));
-        foreach (var w in HostMode.ConflictsForWizard()) Console.WriteLine("  ! " + w);
+        Console.WriteLine(T("  元に戻すときは、管理者のターミナルで `terminal-windows host-mode secure --yes` を実行して再起動します。",
+                            "  To undo later: `terminal-windows host-mode secure --yes` in an admin terminal, then restart."));
         if (!Ask(T("オフにしますか？（管理者の確認画面のあと、再起動が必要です）", "Turn it off? (admin approval, then a restart)"), true))
-        {
-            return Ask(T("このまま続けますか？（遅く、固まることがあります）", "Continue anyway? (slow; setup may hang)"), false);
-        }
+            return false;
 
         var exe = Environment.ProcessPath!;
         var installed = Path.Combine(InstallDir, "terminal-windows.exe");

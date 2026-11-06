@@ -67,6 +67,14 @@ public static class Doctor
         else
             checks.Add(new("virtualbox", "ok", $"VirtualBox {info.Version} ({info.Path})"));
 
+        var vmw = new VmwareBackend();
+        var vinfo = await vmw.ProbeAsync();
+        checks.Add(vinfo.Installed
+            ? new("vmware", vinfo.Problem is null ? "ok" : "warn", $"VMware Workstation {vinfo.Version} ({vinfo.Path})" + (vinfo.Problem is null ? "" : ": " + vinfo.Problem) +
+                  (VmwareBackend.ToolsIso() is null ? " - no windows.iso (VMware Tools); the guest display stays at its default driver" : ""))
+            : new("vmware", "ok", "VMware Workstation Pro not installed (optional; free for personal use; works with the Windows hypervisor on)"));
+        checks.Add(new("backend", "ok", $"New machines use: {Backends.DefaultForNewMachine()} (override with --backend)"));
+
         var ga = VirtualBoxBackend.GuestAdditionsIso();
         checks.Add(ga is null
             ? new("guest-additions-iso", info.Installed ? "warn" : "error", "VBoxGuestAdditions.iso not found in the VirtualBox folder (needed for the display driver).")
@@ -75,7 +83,9 @@ public static class Doctor
         // Virtualization support
         bool hv = HypervisorPresent();
         bool fw = IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED);
-        if (hv)
+        if (hv && VmwareBackend.IsInstalled())
+            checks.Add(new("hypervisor", "ok", "The Windows hypervisor is on; new machines use VMware Workstation, which works alongside it."));
+        else if (hv)
             checks.Add(new("hypervisor", "warn",
                 "A Windows hypervisor is active (WSL2, Docker Desktop, Virtual Machine Platform, Hyper-V or Memory Integrity). " +
                 "VirtualBox then runs through the Windows Hypervisor Platform: much slower, and Windows 11 setup hung on a real PC. " +

@@ -28,7 +28,7 @@ public static class SelfTest
         var logs = MachineStore.LogsDir(m.Name);
         Directory.CreateDirectory(logs);
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-        var backend = new VirtualBoxBackend();
+        var backend = new RoutedBackend();
         var mgr = new MachineManager(backend);
 
         async Task Check(string name, Func<Task<string>> body)

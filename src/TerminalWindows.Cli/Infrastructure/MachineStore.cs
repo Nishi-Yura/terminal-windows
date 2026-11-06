@@ -31,6 +31,13 @@ public sealed class MachineConfig
     public string? IsoPath { get; set; }
     public string? ClonedFrom { get; set; }
     public bool SetupComplete { get; set; }
+    /// <summary>VMware: the VM's fixed MAC (finds its NAT address), VNC port and the subnet the guest accepts.</summary>
+    public string? MacAddress { get; set; }
+    public int VncPort { get; set; }
+    public string ProtectedVncPassword { get; set; } = "";
+    [JsonIgnore] public string VncPassword => ProtectedVncPassword.Length == 0 ? "" : Secrets.Unprotect(ProtectedVncPassword);
+    /// <summary>Source address range the guest helper and its firewall rule accept (null: VirtualBox NAT).</summary>
+    public string? AllowedRemote { get; set; }
     /// <summary>DPAPI (CurrentUser) protected, base64.</summary>
     public string ProtectedToken { get; set; } = "";
     /// <summary>DPAPI (CurrentUser) protected, base64.</summary>

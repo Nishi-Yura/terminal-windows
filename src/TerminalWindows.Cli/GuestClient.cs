@@ -27,16 +27,29 @@ public sealed class GuestClient : IAsyncDisposable
 
     public static async Task<GuestClient> ConnectAsync(MachineConfig m, TimeSpan? timeout = null, CancellationToken ct = default)
     {
+        var (host, port) = Endpoint(m);
         try
         {
-            var rpc = await RpcClient.ConnectAsync("127.0.0.1", m.HostPort, m.Token, timeout ?? TimeSpan.FromSeconds(5), ct);
+            var rpc = await RpcClient.ConnectAsync(host, port, m.Token, timeout ?? TimeSpan.FromSeconds(5), ct);
             return new GuestClient(rpc);
         }
         catch (Exception ex) when (ex is System.Net.Sockets.SocketException or IOException or TimeoutException or RpcException or OperationCanceledException)
         {
-            throw new CliException($"Cannot reach the guest helper of '{m.Name}' (127.0.0.1:{m.HostPort}): {ex.Message}. " +
+            throw new CliException($"Cannot reach the guest helper of '{m.Name}' ({host}:{port}): {ex.Message}. " +
                                    "Is the VM running and logged on? Check 'terminal-windows status " + m.Name + "'.");
         }
+    }
+
+    /// <summary>
+    /// VirtualBox: a 127.0.0.1 port forwarded into the guest. VMware: the guest's own NAT address
+    /// (from VMware's DHCP leases), which only this PC can reach.
+    /// </summary>
+    public static (string Host, int Port) Endpoint(MachineConfig m)
+    {
+        if (m.Backend != Backend.Backends.Vmware) return ("127.0.0.1", m.HostPort);
+        var ip = Backend.VmwareBackend.GuestAddress(m)
+                 ?? throw new CliException($"The VMware VM of '{m.Name}' has no network address yet (still booting, or setup has not reached Windows).");
+        return (ip, ProtocolConstants.GuestPort);
     }
 
     /// <summary>Reachable and (optionally) reporting setup phase "complete".</summary>

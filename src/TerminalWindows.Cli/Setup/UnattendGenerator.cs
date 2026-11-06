@@ -11,7 +11,8 @@ public sealed record UnattendOptions(
     string UiLanguage,
     string TimeZone,
     int? ImageIndex,
-    string? ProductKey);
+    string? ProductKey,
+    bool BypassTpmCheck = false);
 
 /// <summary>
 /// Generates autounattend.xml for a fully unattended Windows 11 install in the GUEST VM:
@@ -99,6 +100,21 @@ public static class UnattendGenerator
         // FirstLogonCommands: find the setup ISO by its marker file and run the helper installer.
         const string firstLogon = "cmd.exe /c \"for %d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) do @if exist %d:\\terminal-windows\\setup.cmd call %d:\\terminal-windows\\setup.cmd\"";
 
+        // VMware's virtual TPM needs the VM encrypted with a password; for a disposable AI VM we skip
+        // Setup's TPM / Secure Boot check instead (Microsoft's LabConfig switches, read in windowsPE).
+        var labConfig = o.BypassTpmCheck ? """
+            <RunSynchronous>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <Path>reg.exe add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>2</Order>
+                    <Path>reg.exe add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+                </RunSynchronousCommand>
+            </RunSynchronous>
+""" : "";
+
         var sb = new StringBuilder();
         sb.Append($$"""
 <?xml version="1.0" encoding="utf-8"?>
@@ -147,6 +163,7 @@ public static class UnattendGenerator
                 <Organization>terminal-windows</Organization>
 {{productKey}}
             </UserData>
+{{labConfig}}
         </component>
     </settings>
     <settings pass="specialize">

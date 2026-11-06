@@ -28,7 +28,8 @@ public sealed record CreateOptions(
     bool ShareWritable = false,
     string? Edition = null,
     string DiskBus = "sata",
-    string? Paravirt = null);
+    string? Paravirt = null,
+    string? Backend = null);
 
 /// <summary>VM lifecycle orchestration shared by the CLI commands and the MCP server.</summary>
 public sealed class MachineManager
@@ -41,7 +42,7 @@ public sealed class MachineManager
 
     public MachineManager(IVmBackend? backend = null, Action<string>? log = null)
     {
-        _backend = backend ?? new VirtualBoxBackend();
+        _backend = backend ?? new RoutedBackend();
         _log = log ?? (s => Console.Error.WriteLine(s));
     }
 
@@ -64,6 +65,9 @@ public sealed class MachineManager
         throw new CliException("Could not find a free local port");
     }
 
+    /// <summary>The backend that creates a new machine (the router only knows machines that already exist).</summary>
+    private IVmBackend CreatorFor(string backend) => _backend is RoutedBackend ? Backends.Create(backend) : _backend;
+
     public static VmSpec SpecFor(MachineConfig m, string iso, string payloadIso, string? share = null, bool shareWritable = false) => new(
         m.VmName, MachineStore.VmBaseFolder(m.Name), m.Cpus, m.MemoryGb * 1024, m.DiskGb * 1024,
         m.HostPort, ProtocolConstants.GuestPort, iso, payloadIso, VirtualBoxBackend.GuestAdditionsIso(), share, shareWritable, m.DiskBus, m.Paravirt);
@@ -84,7 +88,9 @@ public sealed class MachineManager
         var m = new MachineConfig { Name = name, VmName = MachineStore.VmNameFor(name), HostPort = 0, Cpus = o.Cpus, MemoryGb = o.MemoryGb, DiskGb = o.DiskGb, DiskBus = o.DiskBus };
         steps.Add($"Create {MachineStore.MachineDir(name)} (machine.json with DPAPI-protected token/password, user-only ACL)");
         steps.Add($"Generate autounattend.xml (user '{m.User}', locale {o.Locale}, auto-logon, OOBE skipped) and build {PayloadIsoPath(name)}");
-        steps.AddRange(_backend.PlanCreate(SpecFor(m, o.Iso, PayloadIsoPath(name), o.Share, o.ShareWritable)).Select(s => s.Replace(",0,,", ",<random-port>,,")));
+        var backendName = o.Backend ?? Backends.DefaultForNewMachine();
+        steps.Add($"Backend: {backendName}");
+        steps.AddRange(CreatorFor(backendName).PlanCreate(SpecFor(m, o.Iso, PayloadIsoPath(name), o.Share, o.ShareWritable)).Select(s => s.Replace(",0,,", ",<random-port>,,")));
         steps.Add($"VBoxManage startvm {m.VmName} --type headless  (+ press Space to boot from DVD)");
         steps.Add("Wait for unattended setup: Windows install -> first logon -> helper install -> Guest Additions -> reboot");
         steps.Add($"Set resolution {o.Width}x{o.Height}, eject install media, delete the setup ISO, take snapshot '{CleanSetupSnapshot}'");
@@ -102,8 +108,11 @@ public sealed class MachineManager
             throw new CliException("Windows 11 needs at least 1 CPU, 4 GB memory and 64 GB disk.");
         var helper = PayloadIso.FindHelperExe() ?? throw new CliException(
             "TerminalWindowsGuest.exe not found next to terminal-windows.exe (guest\\TerminalWindowsGuest.exe). Run build.ps1 or set TERMINAL_WINDOWS_GUEST_EXE.");
-        var probe = await _backend.ProbeAsync();
-        if (!probe.Installed || probe.Problem is not null) throw new CliException("VirtualBox problem: " + (probe.Problem ?? "not installed") + ". Run 'terminal-windows doctor'.");
+        var backendName = o.Backend ?? Backends.DefaultForNewMachine();
+        var creator = CreatorFor(backendName);
+        var probe = await creator.ProbeAsync();
+        if (!probe.Installed || probe.Problem is not null) throw new CliException($"{backendName} problem: " + (probe.Problem ?? "not installed") + ". Run 'terminal-windows doctor'.");
+        bool vmware = backendName == Backends.Vmware;
 
         Directory.CreateDirectory(MachineStore.MachinesDir);
         var free = new DriveInfo(Path.GetPathRoot(Path.GetFullPath(MachineStore.MachinesDir))!).AvailableFreeSpace / 1024.0 / 1024 / 1024;
@@ -134,23 +143,32 @@ public sealed class MachineManager
             IsoPath = Path.GetFullPath(o.Iso),
             ProtectedToken = Secrets.Protect(token),
             ProtectedPassword = Secrets.Protect(password),
+            Backend = backendName,
         };
+        if (vmware)
+        {
+            m.MacAddress = VmwareBackend.NewMac();
+            m.VncPort = PickFreePort();
+            m.ProtectedVncPassword = Secrets.Protect(Secrets.NewPassword(8));
+            m.AllowedRemote = VmwareBackend.NatSubnet() ?? throw new CliException(
+                "VMware's NAT network (VMnet8) was not found. Open VMware Workstation > Edit > Virtual Network Editor and restore the defaults.");
+        }
         Directory.CreateDirectory(MachineStore.OutboxDir(name));
         Directory.CreateDirectory(MachineStore.InboxDir(name));
         MachineStore.Save(m);
 
-        if (_backend is VirtualBoxBackend && Commands.Doctor.HypervisorPresent())
+        if (!vmware && Commands.Doctor.HypervisorPresent())
             _log("WARNING: the Windows hypervisor is running on this PC, so VirtualBox goes through it. Setup is much slower and may hang. " +
                  "See 'terminal-windows host-mode' (turning it off needs an admin terminal and a reboot).");
         _log("Building setup ISO (autounattend.xml + guest helper)...");
         var unattend = UnattendGenerator.Generate(new UnattendOptions(
             UnattendGenerator.ComputerNameFor(name), m.User, password, m.Locale, m.UiLanguage,
-            o.TimeZone ?? UnattendGenerator.DefaultTimeZone(m.Locale), imageIndex, productKey));
+            o.TimeZone ?? UnattendGenerator.DefaultTimeZone(m.Locale), imageIndex, productKey, BypassTpmCheck: vmware));
         var payload = PayloadIsoPath(name);
         PayloadIso.Build(payload, unattend, PayloadIso.GuestJson(m, token, password), helper);
 
-        _log($"Creating VirtualBox VM {m.VmName}...");
-        await _backend.CreateAsync(SpecFor(m, m.IsoPath, payload, o.Share, o.ShareWritable), s => _log("  " + s));
+        _log($"Creating {(vmware ? "VMware" : "VirtualBox")} VM {m.VmName}...");
+        await creator.CreateAsync(SpecFor(m, m.IsoPath, payload, o.Share, o.ShareWritable), s => _log("  " + s));
 
         _log("Starting unattended Windows setup (headless). This usually takes 20-60 minutes.");
         await _backend.StartAsync(m.VmName);
@@ -205,7 +223,7 @@ public sealed class MachineManager
         var (imageIndex, productKey) = ResolveEdition(m.IsoPath ?? throw new CliException("Unknown install ISO"), edition, null, null);
         var unattend = UnattendGenerator.Generate(new UnattendOptions(
             UnattendGenerator.ComputerNameFor(m.Name), m.User, m.Password, m.Locale, m.UiLanguage,
-            UnattendGenerator.DefaultTimeZone(m.Locale), imageIndex, productKey));
+            UnattendGenerator.DefaultTimeZone(m.Locale), imageIndex, productKey, BypassTpmCheck: m.Backend == Backends.Vmware));
         var path = Path.Combine(MachineStore.MachineDir(m.Name), $"setup-payload-{DateTime.Now:yyyyMMddHHmmss}.iso");
         PayloadIso.Build(path, unattend, PayloadIso.GuestJson(m, m.Token, m.Password), helper);
         await _backend.AttachDvdAsync(m.VmName, 2, path);
@@ -256,7 +274,7 @@ public sealed class MachineManager
             if (state is VmState.PoweredOff or VmState.Aborted or VmState.NotFound)
                 throw new CliException($"VM stopped unexpectedly (state: {state}). Inspect it with 'terminal-windows show {m.Name}'.");
             // Covers VM processes started before this command (or a GUI window attached later).
-            if (_backend is VirtualBoxBackend && PowerThrottling.ExemptVmProcesses() > 0)
+            if (PowerThrottling.ExemptVmProcesses() > 0)
                 _log("  VM process exempted from Windows power throttling.");
             // During setup, "reachable" is not enough: the guest must report setup phase "complete"
             // (the helper can be reachable before the post-install reboot on older guest builds).
@@ -342,7 +360,7 @@ public sealed class MachineManager
         switch (state)
         {
             case VmState.NotFound:
-                throw new CliException($"VirtualBox has no VM named {m.VmName}. It may have been removed outside terminal-windows.");
+                throw new CliException($"{m.Backend} has no VM named {m.VmName}. It may have been removed outside terminal-windows.");
             case VmState.Paused:
                 await _backend.ResumeAsync(m.VmName);
                 break;
@@ -410,10 +428,11 @@ public sealed class MachineManager
                 await Task.Delay(1000);
             await Task.Delay(2000); // the VM process releases its disk locks just after the state flips
         }
-        if (state is not VmState.NotFound && _backend is VirtualBoxBackend vb)
+        if (state is not VmState.NotFound)
         {
             _log($"Unregistering {m.VmName} and deleting its disks...");
-            await vb.UnregisterAndDeleteAsync(m.VmName);
+            if (m.Backend == Backends.Vmware) await new VmwareBackend().DeleteVmAsync(m.VmName);
+            else await new VirtualBoxBackend().UnregisterAndDeleteAsync(m.VmName);
         }
         var dir = MachineStore.MachineDir(m.Name);
         for (int attempt = 0; ; attempt++)
@@ -503,12 +522,22 @@ public sealed class MachineManager
             ProtectedToken = src.ProtectedToken, ProtectedPassword = src.ProtectedPassword,
             ClonedFrom = $"{src.Name}@{snapshot}",
             SetupComplete = true,
+            Backend = src.Backend, AllowedRemote = src.AllowedRemote,
         };
+        if (src.Backend == Backends.Vmware)
+        {
+            m.MacAddress = VmwareBackend.NewMac();
+            m.VncPort = PickFreePort();
+            m.ProtectedVncPassword = Secrets.Protect(Secrets.NewPassword(8));
+            MachineStore.Save(m); // the VMware backend finds a VM's files through its machine.json
+        }
         Directory.CreateDirectory(MachineStore.OutboxDir(newName));
         Directory.CreateDirectory(MachineStore.InboxDir(newName));
 
         _log($"Creating linked clone {m.VmName} from {src.VmName}@{snapshot}...");
         await _backend.CloneLinkedAsync(src.VmName, snapshot, m.VmName, MachineStore.VmBaseFolder(newName));
+        if (m.Backend == Backends.Vmware)
+            VmwareBackend.SetIdentity(VmwareBackend.VmxPath(MachineStore.VmBaseFolder(newName), m.VmName), m.MacAddress!, m.VncPort, m.VncPassword);
         if (await _backend.GetStateAsync(m.VmName) == VmState.Saved)
         {
             // NAT rules cannot be changed while a saved state exists; the clone cold-boots instead (auto-logon).
