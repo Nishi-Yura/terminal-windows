@@ -12,7 +12,7 @@ AI actions only affect the VM; the host's mouse, keyboard and clipboard are neve
 
 Usage:
   terminal-windows up [NAME] [--iso PATH] [--no-view] [--detach] [--plan] [create options]
-  terminal-windows create NAME --iso PATH [--cpus 4] [--memory 8] [--disk 64] [--disk-bus sata|nvme] [--width 1600] [--height 900]
+  terminal-windows create NAME --iso PATH [--cpus 4] [--memory 8] [--disk 64] [--disk-bus sata|nvme] [--paravirt none|minimal|hyperv] [--width 1600] [--height 900]
                           [--offline] [--locale ja-JP] [--ui-language ja-JP] [--timezone TZ]
                           [--edition Pro] [--image-index N] [--product-key KEY] [--auto-snapshot] [--share PATH [--share-writable]]
   terminal-windows start|pause|resume NAME

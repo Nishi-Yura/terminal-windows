@@ -27,7 +27,8 @@ public sealed record CreateOptions(
     string? Share = null,
     bool ShareWritable = false,
     string? Edition = null,
-    string DiskBus = "sata");
+    string DiskBus = "sata",
+    string? Paravirt = null);
 
 /// <summary>VM lifecycle orchestration shared by the CLI commands and the MCP server.</summary>
 public sealed class MachineManager
@@ -65,7 +66,7 @@ public sealed class MachineManager
 
     public static VmSpec SpecFor(MachineConfig m, string iso, string payloadIso, string? share = null, bool shareWritable = false) => new(
         m.VmName, MachineStore.VmBaseFolder(m.Name), m.Cpus, m.MemoryGb * 1024, m.DiskGb * 1024,
-        m.HostPort, ProtocolConstants.GuestPort, iso, payloadIso, VirtualBoxBackend.GuestAdditionsIso(), share, shareWritable, m.DiskBus);
+        m.HostPort, ProtocolConstants.GuestPort, iso, payloadIso, VirtualBoxBackend.GuestAdditionsIso(), share, shareWritable, m.DiskBus, m.Paravirt);
 
     public static string PayloadIsoPath(string name) => Path.Combine(MachineStore.MachineDir(name), "setup-payload.iso");
 
@@ -123,6 +124,7 @@ public sealed class MachineManager
             MemoryGb = o.MemoryGb,
             DiskGb = o.DiskGb,
             DiskBus = o.DiskBus,
+            Paravirt = o.Paravirt,
             Width = o.Width,
             Height = o.Height,
             Locale = o.Locale,
@@ -491,7 +493,7 @@ public sealed class MachineManager
             Name = newName,
             VmName = MachineStore.VmNameFor(newName),
             HostPort = PickFreePort(),
-            Cpus = src.Cpus, MemoryGb = src.MemoryGb, DiskGb = src.DiskGb, DiskBus = src.DiskBus,
+            Cpus = src.Cpus, MemoryGb = src.MemoryGb, DiskGb = src.DiskGb, DiskBus = src.DiskBus, Paravirt = src.Paravirt,
             Width = src.Width, Height = src.Height, Locale = src.Locale, UiLanguage = src.UiLanguage,
             User = src.User, Offline = src.Offline, AutoSnapshot = src.AutoSnapshot, AutoSnapshotKeep = src.AutoSnapshotKeep,
             // The guest image already contains this token/password, so the clone shares them.

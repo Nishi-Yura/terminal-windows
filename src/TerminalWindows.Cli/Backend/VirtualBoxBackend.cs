@@ -15,6 +15,13 @@ public sealed class VirtualBoxBackend : IVmBackend
 
     public static bool IsNvme(string? bus) => string.Equals(bus, "nvme", StringComparison.OrdinalIgnoreCase);
 
+    public static string? ValidateParavirt(string? p) => p?.ToLowerInvariant() switch
+    {
+        null => null,
+        "default" or "legacy" or "minimal" or "hyperv" or "kvm" or "none" => p.ToLowerInvariant(),
+        _ => throw new UsageException("--paravirt must be default, legacy, minimal, hyperv, kvm or none"),
+    };
+
     public static string ValidateDiskBus(string bus) => bus.ToLowerInvariant() switch
     {
         "sata" or "nvme" => bus.ToLowerInvariant(),
@@ -131,11 +138,14 @@ public sealed class VirtualBoxBackend : IVmBackend
             new[] { "storageattach", vm, "--storagectl", StorageController, "--port", "1", "--device", "0", "--type", "dvddrive", "--medium", s.InstallIso },
             new[] { "storageattach", vm, "--storagectl", StorageController, "--port", "2", "--device", "0", "--type", "dvddrive", "--medium", s.PayloadIso },
         };
+        if (s.Paravirt is not null)
+            cmds[1] = cmds[1].Concat(new[] { "--paravirt-provider", s.Paravirt }).ToArray();
         if (IsNvme(s.DiskBus))
         {
             // The system disk on NVMe (MSI-X interrupts); DVDs stay on SATA, where the eject/attach code expects them.
             // Under the Windows Hypervisor Platform, a guest on the AHCI disk hung twice after its first reboot
-            // waiting for a disk interrupt that never came.
+            // waiting for a disk interrupt that never came. Experimental: in a real run under the Windows
+            // Hypervisor Platform, Windows Setup (build 26300) listed no disk on NVMe.
             cmds.Insert(cmds.FindIndex(c => c[0] == "storagectl") + 1,
                 new[] { "storagectl", vm, "--name", NvmeController, "--add", "pcie", "--controller", "NVMe", "--portcount", "1", "--bootable", "on", "--hostiocache", "on" });
             cmds.Insert(cmds.FindIndex(c => c[0] == "storagectl" && c[3] == NvmeController) + 1,

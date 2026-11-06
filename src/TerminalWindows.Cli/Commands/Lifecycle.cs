@@ -25,7 +25,8 @@ public static class Lifecycle
         Share: a.Opt("share") is { } sh ? Path.GetFullPath(sh) : null,
         ShareWritable: a.Flag("share-writable"),
         Edition: a.Opt("edition"),
-        DiskBus: VirtualBoxBackend.ValidateDiskBus(a.Opt("disk-bus") ?? "sata"));
+        DiskBus: VirtualBoxBackend.ValidateDiskBus(a.Opt("disk-bus") ?? "sata"),
+        Paravirt: VirtualBoxBackend.ValidateParavirt(a.Opt("paravirt")));
 
     /// <summary>8 GB for the guest on 16 GB+ hosts, 6 GB below that (the spec allows 6-8 GB).</summary>
     public static int DefaultMemoryGb() => Doctor.TotalMemoryGb() >= 15.9 ? 8 : 6;
