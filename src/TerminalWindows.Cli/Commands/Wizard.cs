@@ -6,6 +6,7 @@ using Microsoft.Win32;
 using TerminalWindows.Cli.Backend;
 using TerminalWindows.Cli.Infrastructure;
 using TerminalWindows.Cli.Setup;
+using TerminalWindows.Cli.Viewer;
 
 namespace TerminalWindows.Cli.Commands;
 
@@ -152,41 +153,48 @@ public static class Wizard
     // ---- steps ----
 
     /// <summary>
-    /// The everyday entry point once a VM exists: a small numbered menu (what a double-click or a bare
-    /// 'terminal-windows' shows). Everything opens in this terminal; it loops until the user quits.
+    /// The everyday entry point once a VM exists (a double-click or a bare 'terminal-windows'). It goes
+    /// straight to the configured start screen: the AI's window on the VM desktop, shown in this terminal
+    /// (or just the screen, or the menu). Ctrl+] / F12 in the screen opens the command bar; "back to menu"
+    /// lands in the numbered menu below, which loops until the user quits.
     /// </summary>
     private static async Task<int> OpenAsync(JsonObject state)
     {
-        var agent = state["agent"]?.GetValue<string>() ?? InstalledAgent() ?? "claude";
         var name = MachineStore.ImplicitMachine() ?? Name;
+        var first = MachineStore.Load(name);
+        var agent = first.Agent ?? state["agent"]?.GetValue<string>() ?? InstalledAgent();
+        var startup = first.Startup ?? (agent is null or "none" ? "view" : "agent");
+
+        if (startup != "menu")
+        {
+            Console.WriteLine(Ui.T($"{name} を開いています…（メニューは画面の中で Ctrl+] か F12）", $"Opening {name}… (menu: Ctrl+] or F12 inside the screen)"));
+            int rc = startup == "agent" && agent is not null and not "none"
+                ? await RunAgentWindowAsync(name, agent)
+                : await Lifecycle.ViewAsync(Args(name));
+            if (Lifecycle.LastViewerExit != ViewerExit.Menu) return rc;
+        }
+
         while (true)
         {
             var m = MachineStore.Load(name);
+            agent = m.Agent ?? agent;
             var vmState = await new RoutedBackend().GetStateAsync(m.VmName);
             Title($"terminal-windows: {name} ({m.Backend}, {(vmState == VmState.Running ? T("起動中", "running") : T("停止中", "stopped"))})");
             var items = new List<(string Label, Func<Task<int>> Run)>();
-            Task<int> RunAgent(params string[] extra)
-            {
-                var args = Args(new[] { name }.Concat(extra).ToArray());
-                return agent switch
-                {
-                    "codex" => Agent.CodexAsync(args),
-                    "gemini" => Agent.GeminiAsync(args),
-                    _ => Agent.ClaudeAsync(args),
-                };
-            }
-            if (agent != "none")
-            {
-                items.Add((T($"{agent} を開く（VM のデスクトップの窓で。画面ごと見えます。Ctrl+] で戻る）", $"Open {agent} in a window on the VM's desktop, shown here (Ctrl+] comes back)"),
-                    () => RunAgent("--window")));
-                items.Add((T($"{agent} をこのターミナルで直接使う（文字だけ。Ctrl+] で戻る）", $"Use {agent} directly in this terminal (text only; Ctrl+] comes back)"),
-                    async () => { await Lifecycle.StartAsync(Args(name)); return await RunAgent(); }));
-            }
-            items.Add((T("画面を見る・操作する（Ctrl+] で戻る）", "Watch and use the screen (Ctrl+] comes back)"), () => Lifecycle.ViewAsync(Args(name))));
-            items.Add((T("VM の中のターミナル（PowerShell）", "A terminal inside the VM (PowerShell)"), async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
+            if (agent is not null and not "none")
+                items.Add((T($"{agent} を開く（VM のデスクトップの窓で。画面ごと見えます）", $"Open {agent} in a window on the VM's desktop, shown here"),
+                    () => RunAgentWindowAsync(name, agent)));
+            items.Add((T("画面を見る・操作する", "Watch and use the screen"), () => Lifecycle.ViewAsync(Args(name))));
+            items.Add((T("VM の中のターミナル（PowerShell、文字だけ）", "A terminal inside the VM (PowerShell, text only)"),
+                async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
             items.Add((T("スナップショットを撮る（今の状態を保存）", "Take a snapshot (save this state)"), () => SnapshotCommands.SnapshotAsync(Args(name))));
             items.Add((vmState == VmState.Running ? T("VM を止める（状態を保存。次回そのまま再開）", "Stop the VM (state is saved; resumes as it was)") : T("VM を起動する", "Start the VM"),
                 () => vmState == VmState.Running ? Lifecycle.StopAsync(Args(name)) : Lifecycle.StartAsync(Args(name))));
+            var current = m.Startup ?? (agent is null or "none" ? "view" : "agent");
+            items.Add((T($"開いたときに最初に出すもの: {StartupLabel(current, agent)}（変更）", $"Shown first when opened: {StartupLabel(current, agent)} (change)"),
+                () => { ChangeStartup(m, agent); return Task.FromResult(0); }));
+            Console.WriteLine(T("  （画面を見ている間は Ctrl+] か F12 で、スナップショット・停止・メニューに戻るを選べます）",
+                                "  (while watching the screen, Ctrl+] or F12 gives snapshot / stop / back to menu)"));
             for (int i = 0; i < items.Count; i++) Console.WriteLine($"  {i + 1}) {items[i].Label}");
             Console.WriteLine("  q) " + T("終わる（VM はそのまま）", "Quit (the VM stays as it is)"));
             Console.Write(T("  番号 [1]: ", "  Number [1]: "));
@@ -199,6 +207,40 @@ public static class Wizard
             {
                 Console.WriteLine(T("エラー: ", "Error: ") + ex.Message);
             }
+        }
+    }
+
+    private static Task<int> RunAgentWindowAsync(string name, string agent)
+    {
+        var args = Args(name, "--window");
+        return agent switch
+        {
+            "codex" => Agent.CodexAsync(args),
+            "gemini" => Agent.GeminiAsync(args),
+            _ => Agent.ClaudeAsync(args),
+        };
+    }
+
+    private static string StartupLabel(string startup, string? agent) => startup switch
+    {
+        "agent" => T($"{agent ?? "AI"} の窓", $"the {agent ?? "AI"} window"),
+        "view" => T("VM の画面", "the VM screen"),
+        _ => T("このメニュー", "this menu"),
+    };
+
+    private static void ChangeStartup(MachineConfig m, string? agent)
+    {
+        var options = new List<string>();
+        if (agent is not null and not "none") options.Add("agent");
+        options.Add("view");
+        options.Add("menu");
+        for (int i = 0; i < options.Count; i++) Console.WriteLine($"    {i + 1}) {StartupLabel(options[i], agent)}");
+        Console.Write(T("    番号: ", "    Number: "));
+        if (int.TryParse((Console.ReadLine() ?? "").Trim(), out var k) && k >= 1 && k <= options.Count)
+        {
+            m.Startup = options[k - 1];
+            MachineStore.Save(m);
+            Console.WriteLine(T($"    次から最初に「{StartupLabel(m.Startup, agent)}」を出します。", $"    From now on it opens with {StartupLabel(m.Startup, agent)}."));
         }
     }
 

@@ -346,6 +346,8 @@ public static class Agent
             }
         }
 
+        m.Agent = agent.Id;
+        MachineStore.Save(m);
         Console.WriteLine();
         Console.WriteLine($"{agent.DisplayName} is installed inside {m.Name}. Next:");
         Console.WriteLine($"  1. terminal-windows snapshot {m.Name} --name {agent.Id}-ready");

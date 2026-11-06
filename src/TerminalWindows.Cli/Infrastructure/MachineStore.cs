@@ -31,6 +31,10 @@ public sealed class MachineConfig
     public string? IsoPath { get; set; }
     public string? ClonedFrom { get; set; }
     public bool SetupComplete { get; set; }
+    /// <summary>The AI CLI installed with agent-install (claude / codex / gemini), shown first on start.</summary>
+    public string? Agent { get; set; }
+    /// <summary>What opening terminal-windows shows first: "agent" (the AI's window), "view" or "menu".</summary>
+    public string? Startup { get; set; }
     /// <summary>VMware: the VM's fixed MAC (finds its NAT address), VNC port and the subnet the guest accepts.</summary>
     public string? MacAddress { get; set; }
     public int VncPort { get; set; }

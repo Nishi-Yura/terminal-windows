@@ -159,6 +159,9 @@ public static class Lifecycle
         return 0;
     }
 
+    /// <summary>How the last viewer in this process was left (the menu loop uses it).</summary>
+    public static ViewerExit LastViewerExit { get; private set; } = ViewerExit.Quit;
+
     public static async Task<int> ViewAsync(ParsedArgs a)
     {
         var m = MachineStore.Load(a.Machine());
@@ -176,8 +179,17 @@ public static class Lifecycle
         // Terminals without Sixel/kitty graphics get the truecolor block mode.
         if (Console.IsInputRedirected || Console.IsOutputRedirected)
             throw new CliException($"'view' needs an interactive terminal. To open the hypervisor's own window instead, run: terminal-windows show {m.Name}");
-        await new TerminalViewer(m, caps).RunAsync();
-        Console.WriteLine($"Viewer closed. {m.Name} keeps running (stop it with 'terminal-windows stop {m.Name}').");
+        var viewer = new TerminalViewer(m, caps);
+        await viewer.RunAsync();
+        LastViewerExit = viewer.Exit;
+        if (viewer.Exit == ViewerExit.StopVm)
+        {
+            await mgr.StopAsync(m, "savestate", false);
+            Console.WriteLine(Ui.T($"{m.Name} を止めました（状態は保存済み。次回そのまま再開します）。", $"{m.Name} stopped (state saved; it resumes as it was)."));
+            return 0;
+        }
+        if (viewer.Exit == ViewerExit.Quit)
+            Console.WriteLine(Ui.T($"画面を閉じました。{m.Name} は動き続けています。", $"Viewer closed. {m.Name} keeps running (stop it with 'terminal-windows stop')."));
         return 0;
     }
 

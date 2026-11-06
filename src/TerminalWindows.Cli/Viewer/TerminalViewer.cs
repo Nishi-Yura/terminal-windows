@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
 using TerminalWindows.Cli.Infrastructure;
+using TerminalWindows.Cli;
 using TerminalWindows.Protocol;
 
 namespace TerminalWindows.Cli.Viewer;
@@ -12,6 +13,9 @@ namespace TerminalWindows.Cli.Viewer;
 /// mouse input to the guest. Ctrl+G opens a palette of Windows shortcuts the terminal would
 /// otherwise swallow (Win, Alt+Tab, ...). Ctrl+] leaves the viewer; the VM keeps running.
 /// </summary>
+/// <summary>How the viewer was left: plain exit, "back to the menu", or "stop the VM".</summary>
+public enum ViewerExit { Quit, Menu, StopVm }
+
 public sealed class TerminalViewer
 {
     private readonly MachineConfig _machine;
@@ -50,6 +54,13 @@ public sealed class TerminalViewer
         _caps = caps;
         _protocol = caps.Protocol;
     }
+
+    public ViewerExit Exit { get; private set; } = ViewerExit.Quit;
+
+    /// <summary>The command bar (Ctrl+] or F12): the menu's actions without leaving the screen.</summary>
+    private static string CommandBar => Ui.T(
+        " 1:メニューへ戻る  2:スナップショット  3:VM を止める  4:Windows キー  Ctrl+]:画面を閉じる  その他のキー:取り消し ",
+        " 1:back to menu  2:snapshot  3:stop the VM  4:Windows keys  Ctrl+]:close viewer  other key:cancel ");
 
     public async Task RunAsync()
     {
@@ -140,7 +151,8 @@ public sealed class TerminalViewer
             (int Col, int Row, bool Moved)? press = null;
             string? heldButton = null;
             (int X, int Y) lastGuest = (0, 0);
-            bool paletteOpen = false;
+            bool paletteOpen = false, barOpen = false;
+            Task? snapshotJob = null;
             while (true)
             {
                 if (Console.WindowWidth != cols || Console.WindowHeight != rows)
@@ -166,6 +178,41 @@ public sealed class TerminalViewer
                 if (!stdin.Reader.TryRead(out chunk!)) continue;
                 foreach (var ev in parser.Feed(chunk))
                 {
+                    if (barOpen)
+                    {
+                        barOpen = false;
+                        DrawStatus(Write, null);
+                        switch (ev)
+                        {
+                            case ExitRequest:
+                                Exit = ViewerExit.Quit;
+                                return;
+                            case TextInput { Text: "1" or "q" or "m" }:
+                                Exit = ViewerExit.Menu;
+                                return;
+                            case TextInput { Text: "2" or "s" }:
+                                if (snapshotJob is { IsCompleted: false }) { DrawStatus(Write, Ui.T(" スナップショットはまだ作成中です… ", " A snapshot is still being taken… ")); break; }
+                                DrawStatus(Write, Ui.T(" スナップショットを撮っています（1〜3 分。そのまま操作できます）… ", " Taking a snapshot (1-3 min; you can keep working)… "));
+                                snapshotJob = Task.Run(async () =>
+                                {
+                                    try
+                                    {
+                                        var label = await new MachineManager(log: _ => { }).SnapshotAsync(_machine, null);
+                                        DrawStatus(Write, Ui.T($" スナップショット「{label}」を保存しました。戻すとき: terminal-windows restore {label} ", $" Snapshot '{label}' saved. Restore with: terminal-windows restore {label} "));
+                                    }
+                                    catch (Exception ex) { DrawStatus(Write, Ui.T(" スナップショットに失敗: ", " Snapshot failed: ") + ex.Message); }
+                                });
+                                break;
+                            case TextInput { Text: "3" }:
+                                Exit = ViewerExit.StopVm;
+                                return;
+                            case TextInput { Text: "4" }:
+                                paletteOpen = true;
+                                DrawStatus(Write, string.Join("  ", Palette.Select((p, i) => $"{PaletteKey(i)}:{p.Label}")) + Ui.T("  （他のキー: 取り消し）", "  (other key: cancel)"));
+                                break;
+                        }
+                        continue;
+                    }
                     if (paletteOpen)
                     {
                         paletteOpen = false;
@@ -179,7 +226,10 @@ public sealed class TerminalViewer
                     switch (ev)
                     {
                         case ExitRequest:
-                            return;
+                        case KeyInput { Chord: "f12" }:
+                            barOpen = true;
+                            DrawStatus(Write, CommandBar);
+                            break;
                         case PaletteRequest:
                             paletteOpen = true;
                             DrawStatus(Write, string.Join("  ", Palette.Select((p, i) => $"{PaletteKey(i)}:{p.Label}")) + "  (other key: cancel)");
@@ -327,10 +377,11 @@ public sealed class TerminalViewer
     private void DrawStatus(Action<string> write, string? message)
     {
         int rows = Console.WindowHeight, cols = Console.WindowWidth;
-        var mode = _protocol == GraphicsProtocol.Blocks ? " | low-res text mode (Windows Terminal shows full resolution)" : "";
-        var text = message ?? $" terminal-windows: {_machine.Name} | Ctrl+G: Windows keys | Ctrl+]: exit viewer (VM keeps running) | {_fps:0.0} fps{mode} ";
-        if (text.Length > cols) text = text[..cols];
-        write($"\u001b7\u001b[{rows};1H\u001b[7m{text.PadRight(cols)}\u001b[0m\u001b8");
+        var mode = _protocol == GraphicsProtocol.Blocks ? Ui.T(" | 簡易表示（Windows Terminal ならフル解像度）", " | low-res text mode (Windows Terminal shows full resolution)") : "";
+        var text = message ?? Ui.T(
+            $" {_machine.Name} | Ctrl+] または F12: メニュー（スナップショット・停止・戻る） | Ctrl+G: Windows キー | {_fps:0} fps{mode} ",
+            $" {_machine.Name} | Ctrl+] or F12: menu (snapshot, stop, back) | Ctrl+G: Windows keys | {_fps:0} fps{mode} ");
+        write($"\u001b7\u001b[{rows};1H\u001b[7m{Ui.FitWidth(text, cols)}\u001b[0m\u001b8");
     }
 
     private async Task DetectCellSizeAsync(Action<string> write, System.Threading.Channels.Channel<byte[]> stdin, VtInputParser parser)

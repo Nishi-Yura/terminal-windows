@@ -96,22 +96,30 @@ terminal-windows は、VirtualBox で **AI 専用の Windows 11** を自動で�
 
 ### ふだんの使い方
 
-ターミナルで `terminal-windows` とだけ打つと（exe をダブルクリックしても同じ）、メニューが出ます。
+`terminal-windows.exe` を開くと（ターミナルで `terminal-windows` と打っても同じ）、**すぐに VM の画面がターミナルに出ます**。AI を入れてあれば、その AI（Claude Code など）が VM のデスクトップの窓で開いた状態で映ります。
+
+- 画面を見ている間に **Ctrl+]**（または **F12**）を押すと、下の行にメニューが出ます。
+
+  `1:メニューへ戻る  2:スナップショット  3:VM を止める  4:Windows キー  Ctrl+]:画面を閉じる`
+
+  スナップショットは、画面を見たまま裏で撮れます。
+- **Ctrl+G** を押すと、Windows のショートカット一覧（Win キー、Alt+Tab など）が出ます。
+- 「メニューへ戻る」を選ぶと、番号で選ぶメニューが出ます。最初に何を出すか（AI の窓 / VM の画面 / メニュー）も、ここで変えられます。
 
 ```
 == terminal-windows: default (vmware, 起動中) ==
-  1) claude を開く（VM のデスクトップの窓で。画面ごと見えます。Ctrl+] で戻る）
-  2) claude をこのターミナルで直接使う（文字だけ。Ctrl+] で戻る）
-  3) 画面を見る・操作する（Ctrl+] で戻る）
-  4) VM の中のターミナル（PowerShell）
-  5) スナップショットを撮る（今の状態を保存）
-  6) VM を止める（状態を保存。次回そのまま再開）
+  1) claude を開く（VM のデスクトップの窓で。画面ごと見えます）
+  2) 画面を見る・操作する
+  3) VM の中のターミナル（PowerShell、文字だけ）
+  4) スナップショットを撮る（今の状態を保存）
+  5) VM を止める（状態を保存。次回そのまま再開）
+  6) 開いたときに最初に出すもの: claude の窓（変更）
   q) 終わる（VM はそのまま）
 ```
 
-- `terminal-windows claude --window` は、VM のデスクトップに Windows Terminal の窓を開いて Claude を動かし、その画面をこのターミナルに映します。Claude が VM を操作する様子も、同じ画面で見られます（すでに開いていれば、その窓を前面に出します）。
-- マシンが `default` だけのときは、コマンドのマシン名を省略できます（`terminal-windows claude`、`terminal-windows view`、`terminal-windows push file.txt` など）。
-- 画面は必ずターミナルの中に表示します。Windows Terminal ではフル解像度で映ります。画像表示（Sixel / kitty）に対応していないターミナルでは、色付きの文字で表示します（解像度は低めです）。VMware や VirtualBox のウィンドウを開きたいときだけ、`terminal-windows show` を使います。
+- `terminal-windows claude --window` で、AI の窓を直接開くこともできます。
+- マシンが `default` だけのときは、コマンドのマシン名を省略できます（`terminal-windows view`、`terminal-windows push file.txt` など）。
+- 画面は必ずターミナルの中に表示します。画像表示（Sixel / kitty）に対応していないターミナルでは、色付きの文字で表示します（解像度は低めです）。VMware や VirtualBox のウィンドウを開きたいときだけ、`terminal-windows show` を使います。
 
 ### コマンドで進める方法
 
