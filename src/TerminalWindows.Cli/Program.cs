@@ -7,7 +7,7 @@ namespace TerminalWindows.Cli;
 public static class Program
 {
     public const string Usage = """
-terminal-windows - an AI-dedicated Windows VM (VirtualBox) you can watch in the terminal and drive via MCP.
+terminal-windows - an AI-dedicated Windows VM (VirtualBox or VMware Workstation) you can watch in the terminal and drive via MCP.
 AI actions only affect the VM; the host's mouse, keyboard and clipboard are never touched.
 
 Usage:

@@ -58,6 +58,30 @@ public static class Tune
                 if ($LASTEXITCODE -ne 0) { throw "powercfg failed ($LASTEXITCODE)" }
                 'ok'
                 """),
+            ("Plain desktop: solid background, no Spotlight icon, widgets or Copilot button (smaller, calmer screenshots)",
+                """
+                $pol = 'HKCU:\Software\Policies\Microsoft\Windows\CloudContent'
+                New-Item -Path $pol -Force | Out-Null
+                Set-ItemProperty $pol -Name DisableSpotlightCollectionOnDesktop -Value 1 -Type DWord
+                Set-ItemProperty $pol -Name DisableWindowsSpotlightFeatures -Value 1 -Type DWord
+                $dsh = 'HKLM:\SOFTWARE\Policies\Microsoft\Dsh'
+                New-Item -Path $dsh -Force | Out-Null
+                Set-ItemProperty $dsh -Name AllowNewsAndInterests -Value 0 -Type DWord
+                $a = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+                Set-ItemProperty $a -Name ShowCopilotButton -Value 0 -Type DWord
+                Set-ItemProperty $a -Name ShowTaskViewButton -Value 0 -Type DWord
+                Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Search' -Name SearchboxTaskbarMode -Value 1 -Type DWord
+                # Solid dark-blue background instead of the photo (Spotlight off first, or it puts the photo back).
+                $d = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers'
+                New-Item -Path $d -Force | Out-Null
+                Set-ItemProperty $d -Name BackgroundType -Value 1 -Type DWord
+                Set-ItemProperty 'HKCU:\Control Panel\Desktop' -Name WallPaper -Value ''
+                Set-ItemProperty 'HKCU:\Control Panel\Colors' -Name Background -Value '24 48 72'
+                Add-Type -Namespace TW -Name W -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern bool SystemParametersInfo(int a, int b, string c, int d);'
+                [TW.W]::SystemParametersInfo(0x14, 0, '', 3) | Out-Null
+                Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+                'ok'
+                """),
         };
         if (defender)
         {

@@ -24,7 +24,7 @@ public sealed class McpServer
     }
 
     private static readonly string Instructions =
-        "Controls an AI-dedicated Windows VM (VirtualBox). Actions affect only the VM, never the host. " +
+        "Controls an AI-dedicated Windows VM (VirtualBox or VMware Workstation). Actions affect only the VM, never the host. " +
         "Start every session with read_notes. Loop: screenshot -> act -> screenshot to verify. " +
         "Coordinates are pixels of the latest screenshot image. Use ui_tree to locate controls precisely. " +
         "Take a snapshot before destructive changes. Put deliverables in Desktop\\Outbox and call export_file. " +
