@@ -8,7 +8,7 @@ public static class Transfer
 {
     public static async Task<int> PullAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var guestPath = a.PosOrNull(1);
         var to = a.Opt("to");
         bool sync = a.Flag("sync-outbox");
@@ -37,7 +37,7 @@ public static class Transfer
 
     public static async Task<int> PushAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var hostPath = a.Pos(1, "HOST_PATH");
         var to = a.Opt("to");
         a.RejectUnknown();
@@ -102,7 +102,7 @@ public static class Notes
 
     public static async Task<int> RunAsync(ParsedArgs a)
     {
-        var name = a.Pos(0, "NAME");
+        var name = a.Machine();
         MachineStore.Load(name);
         bool edit = a.Flag("edit");
         a.RejectUnknown();

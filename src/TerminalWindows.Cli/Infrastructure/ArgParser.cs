@@ -71,6 +71,22 @@ public sealed class ParsedArgs
 
     public string? PosOrNull(int index) => index < Positionals.Count ? Positionals[index] : null;
 
+    /// <summary>
+    /// The machine NAME, which may be left out: when the first positional is not an existing machine, the
+    /// default machine is assumed and inserted, so later positionals keep their indexes
+    /// ('terminal-windows push file.txt' = 'push default file.txt').
+    /// </summary>
+    public string Machine()
+    {
+        if (Positionals.Count > 0 && MachineStore.Exists(Positionals[0])) return Positionals[0];
+        var name = MachineStore.ImplicitMachine()
+                   ?? throw new UsageException(Positionals.Count > 0 && MachineStore.IsValidName(Positionals[0])
+                       ? $"No machine named '{Positionals[0]}'. Existing: {string.Join(", ", MachineStore.List())}"
+                       : "Which machine? Give its NAME (see 'terminal-windows ls').");
+        Positionals.Insert(0, name);
+        return name;
+    }
+
     public int PosInt(int index, string what) =>
         int.TryParse(Pos(index, what), out var v) ? v : throw new UsageException($"{what} must be an integer");
 

@@ -94,6 +94,23 @@ terminal-windows は、VirtualBox で **AI 専用の Windows 11** を自動で�
 
 何をするかだけを確認したいときは、`terminal-windows setup --dry-run` を実行します。何も入れず、何も変えずに、確認結果だけを表示します。
 
+### ふだんの使い方
+
+ターミナルで `terminal-windows` とだけ打つと（exe をダブルクリックしても同じ）、メニューが出ます。
+
+```
+== terminal-windows: default (vmware, 起動中) ==
+  1) claude を開く（VM の中の AI。Ctrl+] で戻る）
+  2) 画面を見る・操作する（Ctrl+] で戻る）
+  3) VM の中のターミナル（PowerShell）
+  4) スナップショットを撮る（今の状態を保存）
+  5) VM を止める（状態を保存。次回そのまま再開）
+  q) 終わる（VM はそのまま）
+```
+
+- マシンが `default` だけのときは、コマンドのマシン名を省略できます（`terminal-windows claude`、`terminal-windows view`、`terminal-windows push file.txt` など）。
+- 画面は必ずターミナルの中に表示します。Windows Terminal ではフル解像度で映ります。画像表示（Sixel / kitty）に対応していないターミナルでは、色付きの文字で表示します（解像度は低めです）。VMware や VirtualBox のウィンドウを開きたいときだけ、`terminal-windows show` を使います。
+
 ### コマンドで進める方法
 
 **1. ビルドしてインストールする**（管理者権限は不要です）

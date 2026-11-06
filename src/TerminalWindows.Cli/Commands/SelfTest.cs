@@ -20,7 +20,7 @@ public static class SelfTest
 
     public static async Task<int> RunAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         bool withRestore = a.Flag("with-restore");
         a.RejectUnknown();
 

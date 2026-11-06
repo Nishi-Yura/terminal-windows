@@ -98,7 +98,7 @@ public static class Tune
 
     public static async Task<int> RunAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         bool defender = a.Flag("defender"), yes = a.Flag("yes");
         a.RejectUnknown();
         var steps = Steps(defender);

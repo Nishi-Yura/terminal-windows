@@ -13,7 +13,7 @@ public static class ActionCommand
 {
     public static async Task<int> RunAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var verb = a.Pos(1, "action (screenshot|click|double_click|right_click|drag|scroll|type|key|ui_tree|status)");
         JsonObject result;
         await using var c = await GuestClient.ConnectAsync(m);
@@ -96,7 +96,7 @@ public static class SnapshotCommands
 {
     public static async Task<int> SnapshotAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var label = a.Opt("name");
         a.RejectUnknown();
         Console.WriteLine(await new MachineManager().SnapshotAsync(m, label));
@@ -105,7 +105,7 @@ public static class SnapshotCommands
 
     public static async Task<int> RestoreAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var label = a.Pos(1, "LABEL");
         a.RejectUnknown();
         var safety = await new MachineManager().RestoreAsync(m, label);
@@ -115,7 +115,7 @@ public static class SnapshotCommands
 
     public static async Task<int> ListAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         a.RejectUnknown();
         var snaps = await new MachineManager().Backend.ListSnapshotsAsync(m.VmName);
         Output.Json(new JsonArray(snaps.Select(s => (JsonNode)new JsonObject { ["name"] = s.Name, ["current"] = s.IsCurrent }).ToArray()));
@@ -124,7 +124,7 @@ public static class SnapshotCommands
 
     public static async Task<int> CloneAsync(ParsedArgs a)
     {
-        var src = MachineStore.Load(a.Pos(0, "NAME"));
+        var src = MachineStore.Load(a.Machine());
         var newName = a.Pos(1, "NEW");
         var snap = a.Opt("from-snapshot") ?? MachineManager.CleanSetupSnapshot;
         a.RejectUnknown();
@@ -135,7 +135,7 @@ public static class SnapshotCommands
 
     public static async Task<int> RefreshPayloadAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var edition = a.Opt("edition");
         a.RejectUnknown();
         var path = await new MachineManager().RefreshPayloadAsync(m, edition);
@@ -145,7 +145,7 @@ public static class SnapshotCommands
 
     public static async Task<int> UpdateHelperAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         a.RejectUnknown();
         var exe = PayloadIso.FindHelperExe() ?? throw new CliException("No bundled TerminalWindowsGuest.exe found");
         await using var c = await GuestClient.ConnectAsync(m);

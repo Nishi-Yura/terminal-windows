@@ -10,6 +10,9 @@ public static class Program
 terminal-windows - an AI-dedicated Windows VM (VirtualBox or VMware Workstation) you can watch in the terminal and drive via MCP.
 AI actions only affect the VM; the host's mouse, keyboard and clipboard are never touched.
 
+Run 'terminal-windows' with no arguments for a menu (or first-time setup).
+NAME may be left out when there is a machine called "default" or only one machine.
+
 Usage:
   terminal-windows setup [--dry-run]        guided first-time setup (also what double-clicking the exe does)
   terminal-windows up [NAME] [--iso PATH] [--no-view] [--detach] [--plan] [create options]
@@ -18,7 +21,7 @@ Usage:
                           [--edition Pro] [--image-index N] [--product-key KEY] [--auto-snapshot] [--share PATH [--share-writable]]
   terminal-windows start|pause|resume NAME
   terminal-windows stop NAME [--shutdown | --force] [--auto-snapshot]   (default: save state)
-  terminal-windows view NAME [--graphics sixel|kitty|none]
+  terminal-windows view NAME [--graphics sixel|kitty|blocks]   (always in this terminal; blocks = any truecolor terminal)
   terminal-windows view-demo [--graphics sixel|kitty]   (viewer check without a VM; input is only logged)
   terminal-windows show|hide NAME
   terminal-windows ls
@@ -59,8 +62,9 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
     public static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = new UTF8Encoding(false);
-        if (args.Length == 0 && Wizard.StartedByDoubleClick())
-            return await Wizard.RunAsync(ParsedArgs.Parse(Array.Empty<string>(), Flags), pauseAtEnd: true);
+        // No arguments: the menu (or first-time setup), in this terminal. Double-click starts the same.
+        if (args.Length == 0 && !Console.IsInputRedirected)
+            return await Wizard.MenuOrSetupAsync(pauseAtEnd: Wizard.StartedByDoubleClick());
         if (args.Length == 0 || args[0] is "-h" or "--help" or "help")
         {
             Console.WriteLine(Usage);

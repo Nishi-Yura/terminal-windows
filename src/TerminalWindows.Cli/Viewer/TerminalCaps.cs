@@ -5,6 +5,8 @@ public enum GraphicsProtocol
     None,
     Sixel,
     Kitty,
+    /// <summary>Truecolor half-block characters: works in any terminal with 24-bit colour.</summary>
+    Blocks,
 }
 
 public sealed record TerminalCaps(string TerminalName, GraphicsProtocol Protocol)
@@ -28,6 +30,7 @@ public sealed record TerminalCaps(string TerminalName, GraphicsProtocol Protocol
             {
                 "kitty" => GraphicsProtocol.Kitty,
                 "sixel" => GraphicsProtocol.Sixel,
+                "blocks" => GraphicsProtocol.Blocks,
                 _ => GraphicsProtocol.None,
             });
         }

@@ -70,14 +70,16 @@ public static class Wizard
 
     private static async Task<int> RunStepsAsync()
     {
+        var state = LoadState();
+
+        // Already set up: the everyday menu.
+        if (!DryRun && MachineStore.ImplicitMachine() is { } existing && MachineStore.Load(existing).SetupComplete
+            && (state["done"]?.GetValue<bool>() == true || !File.Exists(StatePath)))
+            return await OpenAsync(state);
+
         Title(T("terminal-windows セットアップ", "terminal-windows setup"));
         Console.WriteLine(T("AI 専用の Windows 11 VM を、この PC の中に作ります。あなたのマウスやキーボードには触れません。",
                             "This creates a Windows 11 VM for AI agents inside this PC. Your own mouse and keyboard are never touched."));
-        var state = LoadState();
-
-        // Already set up: just open it.
-        if (!DryRun && MachineStore.Exists(Name) && MachineStore.Load(Name).SetupComplete && (state["done"]?.GetValue<bool>() == true || !File.Exists(StatePath)))
-            return await OpenAsync(state);
 
         if (!Doctor.VirtualizationEnabledInFirmware())
             throw new CliException(T("CPU の仮想化機能（Intel VT-x / AMD-V）が BIOS/UEFI でオフになっています。PC の BIOS 設定でオンにしてから、もう一度開いてください（メーカー名と「仮想化 有効」で検索すると手順が見つかります）。",
@@ -149,21 +151,57 @@ public static class Wizard
 
     // ---- steps ----
 
+    /// <summary>
+    /// The everyday entry point once a VM exists: a small numbered menu (what a double-click or a bare
+    /// 'terminal-windows' shows). Everything opens in this terminal; it loops until the user quits.
+    /// </summary>
     private static async Task<int> OpenAsync(JsonObject state)
     {
-        var agent = state["agent"]?.GetValue<string>() ?? "claude";
-        if (agent == "none")
-            return await Lifecycle.ViewAsync(Args(Name));
-        Console.WriteLine(T($"{agent} を VM の中で開きます。初回はサインインを求められます（表示された URL をブラウザーで開いてください）。Ctrl+] で抜けても VM の中で動き続けます。",
-                            $"Opening {agent} inside the VM. The first time it asks you to sign in (open the URL it shows). Ctrl+] detaches; it keeps running in the VM."));
-        await Lifecycle.StartAsync(Args(Name));
-        return agent switch
+        var agent = state["agent"]?.GetValue<string>() ?? InstalledAgent() ?? "claude";
+        var name = MachineStore.ImplicitMachine() ?? Name;
+        while (true)
         {
-            "codex" => await Agent.CodexAsync(Args(Name)),
-            "gemini" => await Agent.GeminiAsync(Args(Name)),
-            _ => await Agent.ClaudeAsync(Args(Name)),
-        };
+            var m = MachineStore.Load(name);
+            var vmState = await new RoutedBackend().GetStateAsync(m.VmName);
+            Title($"terminal-windows: {name} ({m.Backend}, {(vmState == VmState.Running ? T("起動中", "running") : T("停止中", "stopped"))})");
+            var items = new List<(string Label, Func<Task<int>> Run)>();
+            if (agent != "none")
+                items.Add((T($"{agent} を開く（VM の中の AI。Ctrl+] で戻る）", $"Open {agent} (the AI inside the VM; Ctrl+] comes back)"), async () =>
+                {
+                    await Lifecycle.StartAsync(Args(name));
+                    return agent switch
+                    {
+                        "codex" => await Agent.CodexAsync(Args(name)),
+                        "gemini" => await Agent.GeminiAsync(Args(name)),
+                        _ => await Agent.ClaudeAsync(Args(name)),
+                    };
+                }));
+            items.Add((T("画面を見る・操作する（Ctrl+] で戻る）", "Watch and use the screen (Ctrl+] comes back)"), () => Lifecycle.ViewAsync(Args(name))));
+            items.Add((T("VM の中のターミナル（PowerShell）", "A terminal inside the VM (PowerShell)"), async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
+            items.Add((T("スナップショットを撮る（今の状態を保存）", "Take a snapshot (save this state)"), () => SnapshotCommands.SnapshotAsync(Args(name))));
+            items.Add((vmState == VmState.Running ? T("VM を止める（状態を保存。次回そのまま再開）", "Stop the VM (state is saved; resumes as it was)") : T("VM を起動する", "Start the VM"),
+                () => vmState == VmState.Running ? Lifecycle.StopAsync(Args(name)) : Lifecycle.StartAsync(Args(name))));
+            for (int i = 0; i < items.Count; i++) Console.WriteLine($"  {i + 1}) {items[i].Label}");
+            Console.WriteLine("  q) " + T("終わる（VM はそのまま）", "Quit (the VM stays as it is)"));
+            Console.Write(T("  番号 [1]: ", "  Number [1]: "));
+            var input = (Console.ReadLine() ?? "q").Trim().ToLowerInvariant();
+            if (input is "q" or "quit" or "exit") return 0;
+            int pick = input.Length == 0 ? 1 : int.TryParse(input, out var n) ? n : -1;
+            if (pick < 1 || pick > items.Count) continue;
+            try { await items[pick - 1].Run(); }
+            catch (Exception ex) when (ex is CliException or UsageException or IOException)
+            {
+                Console.WriteLine(T("エラー: ", "Error: ") + ex.Message);
+            }
+        }
     }
+
+    /// <summary>The AI CLI the wizard installed earlier, if the state file says so.</summary>
+    private static string? InstalledAgent() => LoadState()["agent"]?.GetValue<string>();
+
+    /// <summary>A bare 'terminal-windows' in a terminal: the menu when a VM exists, otherwise the setup wizard.</summary>
+    public static Task<int> MenuOrSetupAsync(bool pauseAtEnd) =>
+        RunAsync(ParsedArgs.Parse(Array.Empty<string>(), Program.Flags), pauseAtEnd);
 
     /// <summary>Copies the exe to %LOCALAPPDATA%\Programs\terminal-windows and puts it on the user PATH.</summary>
     private static void InstallSelf()

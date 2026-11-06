@@ -131,7 +131,17 @@ public static class MachineStore
 
     public static string VmNameFor(string name) => "twin-" + ValidateName(name);
 
-    public static bool Exists(string name) => File.Exists(ConfigPath(name));
+    public static bool Exists(string name) => IsValidName(name) && File.Exists(ConfigPath(name));
+
+    public static bool IsValidName(string name) => NamePattern.IsMatch(name);
+
+    /// <summary>The machine a command means when no NAME is given: "default", else the only machine.</summary>
+    public static string? ImplicitMachine()
+    {
+        if (Exists(DefaultName)) return DefaultName;
+        var all = List().ToList();
+        return all.Count == 1 ? all[0] : null;
+    }
 
     public static MachineConfig Load(string name)
     {

@@ -16,6 +16,9 @@ public sealed class TerminalViewer
 {
     private readonly MachineConfig _machine;
     private readonly TerminalCaps _caps;
+    /// <summary>What is actually drawn: the detected protocol, or after probing the terminal Sixel or blocks.</summary>
+    private GraphicsProtocol _protocol;
+    private readonly BlockEncoder _blocks = new();
     private readonly object _frameLock = new();
     private BgraImage? _latest;
     private int _screenW = 1, _screenH = 1;
@@ -45,6 +48,7 @@ public sealed class TerminalViewer
     {
         _machine = machine;
         _caps = caps;
+        _protocol = caps.Protocol;
     }
 
     public async Task RunAsync()
@@ -79,6 +83,8 @@ public sealed class TerminalViewer
         try
         {
             await DetectCellSizeAsync(Write, stdin, parser);
+            if (_protocol == GraphicsProtocol.None) _protocol = GraphicsProtocol.Blocks;
+            if (_protocol == GraphicsProtocol.Blocks) (_cellW, _cellH) = (1, 2);
 
             await using var control = await GuestClient.ConnectAsync(_machine);
             await using var stream = await GuestClient.ConnectAsync(_machine);
@@ -112,10 +118,13 @@ public sealed class TerminalViewer
                     BgraImage? img;
                     lock (_frameLock) img = _latest;
                     if (img is null) continue;
-                    var payload = _caps.Protocol == GraphicsProtocol.Kitty
-                        ? KittyEncoder.Encode(img, _imgCols, _imgRows)
-                        : SixelEncoder.Encode(img);
-                    Write("\u001b[H" + payload);
+                    var payload = _protocol switch
+                    {
+                        GraphicsProtocol.Kitty => "\u001b[H" + KittyEncoder.Encode(img, _imgCols, _imgRows),
+                        GraphicsProtocol.Blocks => _blocks.Encode(img),
+                        _ => "\u001b[H" + SixelEncoder.Encode(img),
+                    };
+                    if (payload.Length > 0) Write(payload);
                     _frames++;
                     if (_fpsClock.ElapsedMilliseconds > 1000)
                     {
@@ -138,6 +147,7 @@ public sealed class TerminalViewer
                 {
                     (cols, rows) = (Console.WindowWidth, Console.WindowHeight);
                     Write("\u001b[2J");
+                    _blocks.Reset();
                     await StartStreamAsync(stream, cols, rows);
                 }
 
@@ -253,13 +263,16 @@ public sealed class TerminalViewer
         var (w, h) = Imaging.Fit(sw, sh, maxW, maxH);
         _imgCols = Math.Max(1, (int)Math.Ceiling(w / (double)_cellW));
         _imgRows = Math.Max(1, (int)Math.Ceiling(h / (double)_cellH));
-        if (_caps.Protocol == GraphicsProtocol.Sixel)
+        if (_protocol == GraphicsProtocol.Blocks) h -= h % 2; // whole cells: two pixel rows each
+        if (_protocol == GraphicsProtocol.Sixel)
         {
             // Snap to whole cells so a cell maps to a fixed block of image pixels.
             w = Math.Min(w, _imgCols * _cellW);
             h = Math.Min(h, _imgRows * _cellH);
         }
-        await stream.CallAsync("stream_start", new JsonObject { ["width"] = w, ["height"] = h, ["fps"] = 30 });
+        // Blocks redraw every changed cell as text, so a lower frame rate keeps the terminal responsive.
+        int fps = _protocol == GraphicsProtocol.Blocks ? 12 : 30;
+        await stream.CallAsync("stream_start", new JsonObject { ["width"] = w, ["height"] = h, ["fps"] = fps });
     }
 
     /// <summary>Maps a 1-based terminal cell to guest screen pixels (cell centre).</summary>
@@ -314,7 +327,8 @@ public sealed class TerminalViewer
     private void DrawStatus(Action<string> write, string? message)
     {
         int rows = Console.WindowHeight, cols = Console.WindowWidth;
-        var text = message ?? $" terminal-windows: {_machine.Name} | Ctrl+G: Windows keys | Ctrl+]: exit viewer (VM keeps running) | {_fps:0.0} fps ";
+        var mode = _protocol == GraphicsProtocol.Blocks ? " | low-res text mode (Windows Terminal shows full resolution)" : "";
+        var text = message ?? $" terminal-windows: {_machine.Name} | Ctrl+G: Windows keys | Ctrl+]: exit viewer (VM keeps running) | {_fps:0.0} fps{mode} ";
         if (text.Length > cols) text = text[..cols];
         write($"\u001b7\u001b[{rows};1H\u001b[7m{text.PadRight(cols)}\u001b[0m\u001b8");
     }
@@ -343,7 +357,13 @@ public sealed class TerminalViewer
                         // Windows Terminal scales Sixel images as if cells were 10x20; keep that unless kitty is used.
                         if (_caps.Protocol == GraphicsProtocol.Kitty) (_cellW, _cellH) = (pw, ph);
                     }
-                    if (ev is TerminalReport { Final: 'c' }) return;
+                    if (ev is TerminalReport { Final: 'c' } da)
+                    {
+                        // Primary device attributes: attribute 4 means the terminal draws Sixel graphics.
+                        if (_protocol == GraphicsProtocol.None && da.Params.TrimStart('?').Split(';').Contains("4"))
+                            _protocol = GraphicsProtocol.Sixel;
+                        return;
+                    }
                 }
             }
         }

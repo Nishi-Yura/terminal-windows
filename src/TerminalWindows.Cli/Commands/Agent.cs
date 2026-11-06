@@ -26,7 +26,7 @@ public static class Agent
 
     private static async Task<int> OpenTerminalAsync(ParsedArgs a, string defaultCommand, string? prefix)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var cwd = a.Opt("cwd");
         a.RejectUnknown();
         var extra = a.Positionals.Skip(1).ToList();
@@ -44,7 +44,7 @@ public static class Agent
 
     public static async Task<int> ExecAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var script = string.Join(' ', a.Positionals.Skip(1));
         int timeout = a.Int("timeout", 300);
         a.RejectUnknown();
@@ -242,7 +242,7 @@ public static class Agent
 
     public static async Task<int> InstallAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         bool yes = a.Flag("yes");
         var agent = Profile(a.Opt("agent") ?? "claude");
         a.RejectUnknown();

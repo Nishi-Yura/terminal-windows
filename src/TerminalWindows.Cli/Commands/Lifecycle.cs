@@ -128,7 +128,7 @@ public static class Lifecycle
 
     public static async Task<int> StartAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         a.RejectUnknown();
         await new MachineManager().EnsureRunningAsync(m);
         Console.WriteLine($"{m.Name} is running.");
@@ -137,7 +137,7 @@ public static class Lifecycle
 
     public static async Task<int> PauseResumeAsync(ParsedArgs a, bool pause)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         a.RejectUnknown();
         var b = new RoutedBackend();
         if (pause) await b.PauseAsync(m.VmName); else await b.ResumeAsync(m.VmName);
@@ -147,7 +147,7 @@ public static class Lifecycle
 
     public static async Task<int> StopAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         bool shutdown = a.Flag("shutdown"), force = a.Flag("force"), auto = a.Flag("auto-snapshot");
         a.RejectUnknown();
         if (shutdown && force) throw new UsageException("Use either --shutdown or --force");
@@ -161,7 +161,7 @@ public static class Lifecycle
 
     public static async Task<int> ViewAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var protocol = a.Opt("graphics");
         a.RejectUnknown();
         var mgr = new MachineManager();
@@ -172,12 +172,10 @@ public static class Lifecycle
     private static async Task<int> ViewMachineAsync(MachineManager mgr, MachineConfig m, string? protocol)
     {
         var caps = TerminalCaps.Detect(protocol);
-        if (caps.Protocol == GraphicsProtocol.None || Console.IsInputRedirected || Console.IsOutputRedirected)
-        {
-            Console.WriteLine($"{caps.TerminalName} cannot show inline graphics; opening the VirtualBox window instead.");
-            await mgr.Backend.ShowWindowAsync(m.VmName);
-            return 0;
-        }
+        // Always inside the terminal (the hypervisor's own window opens only with 'terminal-windows show').
+        // Terminals without Sixel/kitty graphics get the truecolor block mode.
+        if (Console.IsInputRedirected || Console.IsOutputRedirected)
+            throw new CliException($"'view' needs an interactive terminal. To open the hypervisor's own window instead, run: terminal-windows show {m.Name}");
         await new TerminalViewer(m, caps).RunAsync();
         Console.WriteLine($"Viewer closed. {m.Name} keeps running (stop it with 'terminal-windows stop {m.Name}').");
         return 0;
@@ -185,7 +183,7 @@ public static class Lifecycle
 
     public static async Task<int> ShowHideAsync(ParsedArgs a, bool show)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         a.RejectUnknown();
         var b = new RoutedBackend();
         if (show) await b.ShowWindowAsync(m.VmName); else await b.HideWindowAsync(m.VmName);
@@ -213,7 +211,7 @@ public static class Lifecycle
     /// <summary><c>resolution NAME WIDTHxHEIGHT</c>: changes the guest's screen size and remembers it.</summary>
     public static async Task<int> ResolutionAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var size = a.Pos(1, "WIDTHxHEIGHT").ToLowerInvariant().Split('x');
         a.RejectUnknown();
         if (size.Length != 2 || !int.TryParse(size[0], out var w) || !int.TryParse(size[1], out var h) || w < 640 || h < 480)
@@ -231,7 +229,7 @@ public static class Lifecycle
     /// <summary>A screenshot from the hypervisor itself: works before the guest helper exists (Windows Setup).</summary>
     public static async Task<int> ScreenAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var output = Path.GetFullPath(a.Opt("out") ?? MachineManager.SetupScreenPath(m.Name));
         var keys = a.Opt("keys");
         var layout = a.Opt("layout");
@@ -260,7 +258,7 @@ public static class Lifecycle
     /// <summary>Hidden troubleshooting command: types into a VMware VM over VNC (no guest software needed).</summary>
     public static async Task<int> SetupKeysAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         var text = a.Pos(1, "TEXT");
         bool jis = a.Opt("layout") is { } l ? l == "jis" : m.Locale.StartsWith("ja", StringComparison.OrdinalIgnoreCase);
         a.RejectUnknown();
@@ -271,7 +269,7 @@ public static class Lifecycle
 
     public static async Task<int> StatusAsync(ParsedArgs a)
     {
-        var m = MachineStore.Load(a.Pos(0, "NAME"));
+        var m = MachineStore.Load(a.Machine());
         a.RejectUnknown();
         var mgr = new MachineManager();
         var state = await mgr.Backend.GetStateAsync(m.VmName);
