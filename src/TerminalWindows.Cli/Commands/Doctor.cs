@@ -76,7 +76,8 @@ public static class Doctor
         if (hv)
             checks.Add(new("hypervisor", "warn",
                 "A Windows hypervisor is active (WSL2, Docker Desktop, Virtual Machine Platform, Hyper-V or Memory Integrity). " +
-                "VirtualBox will run through the Windows Hypervisor Platform: it works but is slower. terminal-windows does not change this setting."));
+                "VirtualBox then runs through the Windows Hypervisor Platform: much slower, and Windows 11 setup hung on a real PC. " +
+                "Run 'terminal-windows host-mode' to see why it is on, and 'terminal-windows host-mode fast' (admin, reboot) to turn it off."));
         else if (!fw)
             checks.Add(new("vt-x", "error", "Hardware virtualization (VT-x / AMD-V) appears to be disabled in BIOS/UEFI. Enable it in the firmware settings."));
         else

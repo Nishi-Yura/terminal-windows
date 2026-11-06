@@ -42,6 +42,7 @@ AI inside the VM:
   terminal-windows iso-info ISO [--edition NAME]      (list editions; create picks Pro by default)
   terminal-windows selftest NAME [--with-restore]      (real-VM checklist; writes logsselftest-*.md)
   terminal-windows doctor [--json]
+  terminal-windows host-mode [fast|secure] [--yes]       (show / switch the host's Windows hypervisor; admin, needs a reboot)
 
 Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WINDOWS_HOME).
 """;
@@ -97,6 +98,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "mcp" => await McpCommand.RunAsync(parsed),
                 "skills" => await SkillsCommand.RunAsync(parsed),
                 "doctor" => await Doctor.RunAsync(parsed),
+                "host-mode" => await HostMode.RunAsync(parsed),
                 "iso-info" => await IsoInfoCommand.RunAsync(parsed),
                 "term" => await Agent.TermAsync(parsed),
                 "claude" => await Agent.ClaudeAsync(parsed),

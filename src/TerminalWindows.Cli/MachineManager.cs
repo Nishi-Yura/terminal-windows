@@ -139,6 +139,9 @@ public sealed class MachineManager
         Directory.CreateDirectory(MachineStore.InboxDir(name));
         MachineStore.Save(m);
 
+        if (_backend is VirtualBoxBackend && Commands.Doctor.HypervisorPresent())
+            _log("WARNING: the Windows hypervisor is running on this PC, so VirtualBox goes through it. Setup is much slower and may hang. " +
+                 "See 'terminal-windows host-mode' (turning it off needs an admin terminal and a reboot).");
         _log("Building setup ISO (autounattend.xml + guest helper)...");
         var unattend = UnattendGenerator.Generate(new UnattendOptions(
             UnattendGenerator.ComputerNameFor(name), m.User, password, m.Locale, m.UiLanguage,
