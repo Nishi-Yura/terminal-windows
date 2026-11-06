@@ -100,14 +100,16 @@ terminal-windows は、VirtualBox で **AI 専用の Windows 11** を自動で�
 
 ```
 == terminal-windows: default (vmware, 起動中) ==
-  1) claude を開く（VM の中の AI。Ctrl+] で戻る）
-  2) 画面を見る・操作する（Ctrl+] で戻る）
-  3) VM の中のターミナル（PowerShell）
-  4) スナップショットを撮る（今の状態を保存）
-  5) VM を止める（状態を保存。次回そのまま再開）
+  1) claude を開く（VM のデスクトップの窓で。画面ごと見えます。Ctrl+] で戻る）
+  2) claude をこのターミナルで直接使う（文字だけ。Ctrl+] で戻る）
+  3) 画面を見る・操作する（Ctrl+] で戻る）
+  4) VM の中のターミナル（PowerShell）
+  5) スナップショットを撮る（今の状態を保存）
+  6) VM を止める（状態を保存。次回そのまま再開）
   q) 終わる（VM はそのまま）
 ```
 
+- `terminal-windows claude --window` は、VM のデスクトップに Windows Terminal の窓を開いて Claude を動かし、その画面をこのターミナルに映します。Claude が VM を操作する様子も、同じ画面で見られます（すでに開いていれば、その窓を前面に出します）。
 - マシンが `default` だけのときは、コマンドのマシン名を省略できます（`terminal-windows claude`、`terminal-windows view`、`terminal-windows push file.txt` など）。
 - 画面は必ずターミナルの中に表示します。Windows Terminal ではフル解像度で映ります。画像表示（Sixel / kitty）に対応していないターミナルでは、色付きの文字で表示します（解像度は低めです）。VMware や VirtualBox のウィンドウを開きたいときだけ、`terminal-windows show` を使います。
 

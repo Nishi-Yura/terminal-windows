@@ -28,6 +28,8 @@ public static class Agent
     {
         var m = MachineStore.Load(a.Machine());
         var cwd = a.Opt("cwd");
+        bool window = a.Flag("window");
+        var protocol = a.Opt("graphics");
         a.RejectUnknown();
         var extra = a.Positionals.Skip(1).ToList();
         string command = extra.Count == 0 ? defaultCommand
@@ -35,9 +37,47 @@ public static class Agent
             : prefix + " " + string.Join(' ', extra.Select(Quote));
         if (Console.IsInputRedirected || Console.IsOutputRedirected)
             throw new CliException("This command needs an interactive terminal.");
+        if (window) return await OpenInDesktopWindowAsync(m, command, cwd, protocol);
 
         await using var c = await GuestClient.ConnectAsync(m);
         return await new GuestTerminalClient(c).RunAsync(command, cwd);
+    }
+
+    /// <summary>
+    /// --window: runs the command in a Windows Terminal window on the VM's own desktop (so it is part of
+    /// what the screen shows, and the AI can see itself work), then opens the viewer in this terminal.
+    /// An already running window with that title is brought to the front instead of starting another.
+    /// </summary>
+    private static async Task<int> OpenInDesktopWindowAsync(MachineConfig m, string command, string? cwd, string? protocol)
+    {
+        await new MachineManager().EnsureRunningAsync(m);
+        var title = command.Split(' ')[0] switch { "claude" => "Claude Code", "codex" => "Codex", "gemini" => "Gemini CLI", var other => other };
+        string Ps(string s) => "'" + s.Replace("'", "''") + "'";
+        var script = $$"""
+            $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
+            $dir = {{(cwd is null ? "$env:USERPROFILE" : Ps(cwd))}}
+            $title = {{Ps(title)}}
+            $open = Get-Process WindowsTerminal -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like "*$title*" }
+            if ($open) {
+              Add-Type -Namespace TW -Name Fg -MemberDefinition '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);'
+              [TW.Fg]::ShowWindow($open[0].MainWindowHandle, 9) | Out-Null
+              [TW.Fg]::SetForegroundWindow($open[0].MainWindowHandle) | Out-Null
+              'focused'
+            } else {
+              # One argument string: Start-Process joins an array without quoting, which splits "Claude Code".
+              Start-Process wt.exe -ArgumentList ('-w new --maximized new-tab --title "{0}" --suppressApplicationTitle -d "{1}" cmd /k {2}' -f $title, $dir, {{Ps(command)}})
+              'started'
+            }
+            """;
+        await using (var c = await GuestClient.ConnectAsync(m))
+        {
+            var r = await RunScriptAsync(c, script, 60);
+            if (r["exitCode"]?.GetValue<int>() != 0) throw new CliException("Could not open the window in the VM: " + r["stderr"]);
+        }
+        Console.WriteLine($"{title} is open on the VM's desktop. Showing the VM screen here: type into it directly (Ctrl+] leaves the viewer; it keeps running).");
+        await Task.Delay(1500);
+        var view = ParsedArgs.Parse(protocol is null ? new[] { m.Name } : new[] { m.Name, "--graphics", protocol }, Program.Flags);
+        return await Lifecycle.ViewAsync(view);
     }
 
     private static string Quote(string s) => s.Length > 0 && s.IndexOfAny(new[] { ' ', '"' }) < 0 ? s : "\"" + s.Replace("\"", "\\\"") + "\"";

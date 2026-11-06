@@ -39,6 +39,7 @@ Usage:
 
 AI inside the VM:
   terminal-windows agent-install NAME [--agent claude|codex|gemini] [--yes]   install an AI CLI + desktop MCP + instructions in the guest
+  terminal-windows claude|codex|gemini NAME [--window] [-- ARGS]   (--window: in a window on the VM's desktop, shown via the viewer)
   terminal-windows claude|codex|gemini NAME [-- ARGS]  run that agent inside the VM, shown in this terminal (Ctrl+] detaches)
   terminal-windows term NAME [--cwd DIR] [-- COMMAND]  a terminal inside the VM (default PowerShell)
   terminal-windows exec NAME SCRIPT [--timeout 300]    run one PowerShell script inside the VM
@@ -56,7 +57,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
     internal static readonly string[] Flags =
     {
         "offline", "auto-snapshot", "share-writable", "no-view", "detach", "plan", "shutdown", "force",
-        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes", "defender", "dry-run",
+        "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes", "defender", "dry-run", "window",
     };
 
     public static async Task<int> Main(string[] args)

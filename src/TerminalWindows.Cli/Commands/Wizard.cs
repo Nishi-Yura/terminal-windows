@@ -165,17 +165,23 @@ public static class Wizard
             var vmState = await new RoutedBackend().GetStateAsync(m.VmName);
             Title($"terminal-windows: {name} ({m.Backend}, {(vmState == VmState.Running ? T("起動中", "running") : T("停止中", "stopped"))})");
             var items = new List<(string Label, Func<Task<int>> Run)>();
-            if (agent != "none")
-                items.Add((T($"{agent} を開く（VM の中の AI。Ctrl+] で戻る）", $"Open {agent} (the AI inside the VM; Ctrl+] comes back)"), async () =>
+            Task<int> RunAgent(params string[] extra)
+            {
+                var args = Args(new[] { name }.Concat(extra).ToArray());
+                return agent switch
                 {
-                    await Lifecycle.StartAsync(Args(name));
-                    return agent switch
-                    {
-                        "codex" => await Agent.CodexAsync(Args(name)),
-                        "gemini" => await Agent.GeminiAsync(Args(name)),
-                        _ => await Agent.ClaudeAsync(Args(name)),
-                    };
-                }));
+                    "codex" => Agent.CodexAsync(args),
+                    "gemini" => Agent.GeminiAsync(args),
+                    _ => Agent.ClaudeAsync(args),
+                };
+            }
+            if (agent != "none")
+            {
+                items.Add((T($"{agent} を開く（VM のデスクトップの窓で。画面ごと見えます。Ctrl+] で戻る）", $"Open {agent} in a window on the VM's desktop, shown here (Ctrl+] comes back)"),
+                    () => RunAgent("--window")));
+                items.Add((T($"{agent} をこのターミナルで直接使う（文字だけ。Ctrl+] で戻る）", $"Use {agent} directly in this terminal (text only; Ctrl+] comes back)"),
+                    async () => { await Lifecycle.StartAsync(Args(name)); return await RunAgent(); }));
+            }
             items.Add((T("画面を見る・操作する（Ctrl+] で戻る）", "Watch and use the screen (Ctrl+] comes back)"), () => Lifecycle.ViewAsync(Args(name))));
             items.Add((T("VM の中のターミナル（PowerShell）", "A terminal inside the VM (PowerShell)"), async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
             items.Add((T("スナップショットを撮る（今の状態を保存）", "Take a snapshot (save this state)"), () => SnapshotCommands.SnapshotAsync(Args(name))));
