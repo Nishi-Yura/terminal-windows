@@ -26,7 +26,8 @@ public sealed record CreateOptions(
     bool AutoSnapshot = false,
     string? Share = null,
     bool ShareWritable = false,
-    string? Edition = null);
+    string? Edition = null,
+    string DiskBus = "sata");
 
 /// <summary>VM lifecycle orchestration shared by the CLI commands and the MCP server.</summary>
 public sealed class MachineManager
@@ -64,7 +65,7 @@ public sealed class MachineManager
 
     public static VmSpec SpecFor(MachineConfig m, string iso, string payloadIso, string? share = null, bool shareWritable = false) => new(
         m.VmName, MachineStore.VmBaseFolder(m.Name), m.Cpus, m.MemoryGb * 1024, m.DiskGb * 1024,
-        m.HostPort, ProtocolConstants.GuestPort, iso, payloadIso, VirtualBoxBackend.GuestAdditionsIso(), share, shareWritable);
+        m.HostPort, ProtocolConstants.GuestPort, iso, payloadIso, VirtualBoxBackend.GuestAdditionsIso(), share, shareWritable, m.DiskBus);
 
     public static string PayloadIsoPath(string name) => Path.Combine(MachineStore.MachineDir(name), "setup-payload.iso");
 
@@ -79,7 +80,7 @@ public sealed class MachineManager
             steps.Add("Wait for the guest helper on 127.0.0.1:<port>, then open the viewer.");
             return steps;
         }
-        var m = new MachineConfig { Name = name, VmName = MachineStore.VmNameFor(name), HostPort = 0, Cpus = o.Cpus, MemoryGb = o.MemoryGb, DiskGb = o.DiskGb };
+        var m = new MachineConfig { Name = name, VmName = MachineStore.VmNameFor(name), HostPort = 0, Cpus = o.Cpus, MemoryGb = o.MemoryGb, DiskGb = o.DiskGb, DiskBus = o.DiskBus };
         steps.Add($"Create {MachineStore.MachineDir(name)} (machine.json with DPAPI-protected token/password, user-only ACL)");
         steps.Add($"Generate autounattend.xml (user '{m.User}', locale {o.Locale}, auto-logon, OOBE skipped) and build {PayloadIsoPath(name)}");
         steps.AddRange(_backend.PlanCreate(SpecFor(m, o.Iso, PayloadIsoPath(name), o.Share, o.ShareWritable)).Select(s => s.Replace(",0,,", ",<random-port>,,")));
@@ -121,6 +122,7 @@ public sealed class MachineManager
             Cpus = o.Cpus,
             MemoryGb = o.MemoryGb,
             DiskGb = o.DiskGb,
+            DiskBus = o.DiskBus,
             Width = o.Width,
             Height = o.Height,
             Locale = o.Locale,
@@ -489,7 +491,7 @@ public sealed class MachineManager
             Name = newName,
             VmName = MachineStore.VmNameFor(newName),
             HostPort = PickFreePort(),
-            Cpus = src.Cpus, MemoryGb = src.MemoryGb, DiskGb = src.DiskGb,
+            Cpus = src.Cpus, MemoryGb = src.MemoryGb, DiskGb = src.DiskGb, DiskBus = src.DiskBus,
             Width = src.Width, Height = src.Height, Locale = src.Locale, UiLanguage = src.UiLanguage,
             User = src.User, Offline = src.Offline, AutoSnapshot = src.AutoSnapshot, AutoSnapshotKeep = src.AutoSnapshotKeep,
             // The guest image already contains this token/password, so the clone shares them.

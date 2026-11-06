@@ -18,6 +18,7 @@ public sealed class MachineConfig
     public int Cpus { get; set; } = 4;
     public int MemoryGb { get; set; } = 8;
     public int DiskGb { get; set; } = 64;
+    public string DiskBus { get; set; } = "sata";
     public int Width { get; set; } = 1600;
     public int Height { get; set; } = 900;
     public string Locale { get; set; } = "ja-JP";

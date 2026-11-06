@@ -11,6 +11,15 @@ namespace TerminalWindows.Cli.Backend;
 public sealed class VirtualBoxBackend : IVmBackend
 {
     public const string StorageController = "SATA";
+    public const string NvmeController = "NVMe";
+
+    public static bool IsNvme(string? bus) => string.Equals(bus, "nvme", StringComparison.OrdinalIgnoreCase);
+
+    public static string ValidateDiskBus(string bus) => bus.ToLowerInvariant() switch
+    {
+        "sata" or "nvme" => bus.ToLowerInvariant(),
+        _ => throw new UsageException("--disk-bus must be sata or nvme"),
+    };
     public const string PortForwardRule = "twhelper";
     public static readonly Version MinimumVersion = new(7, 1);
 
@@ -119,10 +128,24 @@ public sealed class VirtualBoxBackend : IVmBackend
             new[] { "createmedium", "disk", "--filename", disk, "--size", s.DiskMb.ToString(), "--format", "VDI", "--variant", "Standard" },
             // Host I/O cache: under the Windows Hypervisor Platform the uncached async path hung the AHCI port (>32 requests) in a real run.
             new[] { "storagectl", vm, "--name", StorageController, "--add", "sata", "--controller", "IntelAhci", "--portcount", "4", "--bootable", "on", "--hostiocache", "on" },
-            new[] { "storageattach", vm, "--storagectl", StorageController, "--port", "0", "--device", "0", "--type", "hdd", "--medium", disk, "--nonrotational", "on", "--discard", "on" },
             new[] { "storageattach", vm, "--storagectl", StorageController, "--port", "1", "--device", "0", "--type", "dvddrive", "--medium", s.InstallIso },
             new[] { "storageattach", vm, "--storagectl", StorageController, "--port", "2", "--device", "0", "--type", "dvddrive", "--medium", s.PayloadIso },
         };
+        if (IsNvme(s.DiskBus))
+        {
+            // The system disk on NVMe (MSI-X interrupts); DVDs stay on SATA, where the eject/attach code expects them.
+            // Under the Windows Hypervisor Platform, a guest on the AHCI disk hung twice after its first reboot
+            // waiting for a disk interrupt that never came.
+            cmds.Insert(cmds.FindIndex(c => c[0] == "storagectl") + 1,
+                new[] { "storagectl", vm, "--name", NvmeController, "--add", "pcie", "--controller", "NVMe", "--portcount", "1", "--bootable", "on", "--hostiocache", "on" });
+            cmds.Insert(cmds.FindIndex(c => c[0] == "storagectl" && c[3] == NvmeController) + 1,
+                new[] { "storageattach", vm, "--storagectl", NvmeController, "--port", "0", "--device", "0", "--type", "hdd", "--medium", disk, "--nonrotational", "on", "--discard", "on" });
+        }
+        else
+        {
+            cmds.Insert(cmds.FindIndex(c => c[0] == "storagectl") + 1,
+                new[] { "storageattach", vm, "--storagectl", StorageController, "--port", "0", "--device", "0", "--type", "hdd", "--medium", disk, "--nonrotational", "on", "--discard", "on" });
+        }
         if (s.GuestAdditionsIso is not null)
             cmds.Add(new[] { "storageattach", vm, "--storagectl", StorageController, "--port", "3", "--device", "0", "--type", "dvddrive", "--medium", s.GuestAdditionsIso });
         if (s.SharedFolder is not null)

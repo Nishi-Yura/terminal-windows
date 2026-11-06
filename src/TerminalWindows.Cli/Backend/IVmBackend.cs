@@ -25,7 +25,8 @@ public sealed record VmSpec(
     string PayloadIso,
     string? GuestAdditionsIso,
     string? SharedFolder,
-    bool SharedFolderWritable);
+    bool SharedFolderWritable,
+    string DiskBus = "sata");
 
 public sealed record BackendInfo(bool Installed, string? Version, string? Path, string? Problem);
 
