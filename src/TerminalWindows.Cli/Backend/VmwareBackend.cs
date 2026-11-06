@@ -188,14 +188,38 @@ public sealed class VmwareBackend : IVmBackend
         var r = await _runner.RunAsync(Vmrun, new[] { "-T", "ws", "list" }, TimeSpan.FromSeconds(60));
         if (!r.Success) return VmState.Other;
         if (r.StdOut.Split('\n').Any(l => string.Equals(l.Trim(), vmx, StringComparison.OrdinalIgnoreCase))) return VmState.Running;
-        return Directory.EnumerateFiles(Path.GetDirectoryName(vmx)!, "*.vmss").Any() ? VmState.Saved : VmState.PoweredOff;
+        return Directory.EnumerateFiles(Path.GetDirectoryName(vmx)!, "*.vmss").Any(f => !Path.GetFileName(f).Contains("-Snapshot")) ? VmState.Saved : VmState.PoweredOff;
     }
 
     public async Task StartAsync(string vm, bool headless = true)
     {
         var vmx = VmxFor(vm);
         DisconnectMissingMedia(vmx);
-        await Run("start", vmx, headless ? "nogui" : "gui");
+        try
+        {
+            await Run("start", vmx, headless ? "nogui" : "gui");
+        }
+        catch (CliException) when (SuspendedStateUnusable(vmx))
+        {
+            // A suspended state saved with Windows' hypervisor off cannot resume with it on (or the other way
+            // round): the CPU features differ. Drop it and cold-boot; auto-logon brings the helper back.
+            await DiscardSavedStateAsync(vm);
+            await Run("start", vmx, headless ? "nogui" : "gui");
+        }
+    }
+
+    /// <summary>True when the last start refused to resume the suspended state (CPU feature mismatch).</summary>
+    public static bool SuspendedStateUnusable(string vmx)
+    {
+        var dir = Path.GetDirectoryName(vmx)!;
+        if (!Directory.EnumerateFiles(dir, "*.vmss").Any(f => !Path.GetFileName(f).Contains("-Snapshot"))) return false;
+        try
+        {
+            using var fs = new FileStream(Path.Combine(dir, "vmware.log"), FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var log = new StreamReader(fs).ReadToEnd();
+            return log.Contains("msg.checkpoint.restore.cpufail") || log.Contains("msg.checkpoint.cpucheck.fail");
+        }
+        catch (IOException) { return false; }
     }
 
     /// <summary>Gives a cloned VM its own MAC address and VNC port (a clone copies the source's).</summary>
@@ -233,10 +257,29 @@ public sealed class VmwareBackend : IVmBackend
     public async Task PauseAsync(string vm) => await Run("pause", VmxFor(vm));
     public async Task ResumeAsync(string vm) => await Run("unpause", VmxFor(vm));
 
+    /// <summary>
+    /// Drops the suspended state: the .vmss named by checkpoint.vmState and its .vmem. Snapshot memory files
+    /// (*-SnapshotN.vmem / .vmsn) are left alone.
+    /// </summary>
     public Task DiscardSavedStateAsync(string vm)
     {
-        var dir = Path.GetDirectoryName(VmxFor(vm))!;
-        foreach (var f in Directory.EnumerateFiles(dir, "*.vmss").Concat(Directory.EnumerateFiles(dir, "*.vmem"))) File.Delete(f);
+        var vmx = VmxFor(vm);
+        var dir = Path.GetDirectoryName(vmx)!;
+        var lines = File.ReadAllLines(vmx).ToList();
+        var key = lines.FindIndex(l => l.StartsWith("checkpoint.vmState "));
+        var name = key >= 0 ? Regex.Match(lines[key], "\"(.*)\"").Groups[1].Value : "";
+        var suspended = name.Length > 0
+            ? new[] { name }
+            : Directory.EnumerateFiles(dir, "*.vmss").Select(Path.GetFileName).Where(f => !f!.Contains("-Snapshot")).ToArray();
+        foreach (var vmss in suspended)
+        {
+            foreach (var f in new[] { vmss!, Path.ChangeExtension(vmss!, ".vmem") })
+            {
+                var path = Path.Combine(dir, f);
+                if (File.Exists(path)) File.Delete(path);
+            }
+        }
+        if (key >= 0) { lines[key] = "checkpoint.vmState = \"\""; File.WriteAllLines(vmx, lines); }
         return Task.CompletedTask;
     }
 
