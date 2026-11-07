@@ -13,7 +13,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 
 - 🤖 **AI はその VM の中だけで作業します。** ホスト PC のマウス・キーボード・クリップボードには一切触れないので、AI が作業している間もあなたは PC を普段どおり使えます。
 - 🖥️ **VM の画面はターミナルの中に表示されます。** 見るだけでなく、クリックや入力もできます。
-- 🧩 **AI のつなぎ方は 2 通りあります。** ホストの Claude Code などから MCP で操作する方法と、AI そのものを VM の中で動かす方法です。
+- 🧩 **AI のつなぎ方は 2 通りあります。** ホストの AI ツール（Claude Code、Claude Desktop、Codex、Gemini CLI、Cursor など）から MCP で操作する方法と、AI そのものを VM の中で動かす方法です。
 - 🏠 **Windows 11 Home でも動きます。** Hyper-V は使わず、無料の VMware Workstation か VirtualBox を使います。
 
 ---
@@ -176,9 +176,24 @@ terminal-windows view default
 terminal-windows connect
 ```
 
-`connect` は、この PC の Claude Code にスキル（`~\.claude\skills\terminal-windows`）と MCP サーバーを登録します（メニューからも選べます）。exe の場所を絶対パスで登録するので、PATH の変更がまだ反映されていないアプリでも動きます。
+`connect` は、この PC に入っている AI ツールを探して、それぞれに MCP サーバーと使い方の説明を登録します（メニューからも選べます。`--dry-run` を付けると、何を変えるかだけ表示します）。
 
-Claude Code などの MCP クライアントから、次のツールで VM を操作できます。ほかのクライアント向けの設定は `terminal-windows mcp --config` で出力できます。
+| ツール | MCP の登録先 | 使い方の説明 |
+|---|---|---|
+| Claude Code | `claude mcp add --scope user` | `~\.claude\skills\terminal-windows\SKILL.md` |
+| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` | MCP サーバーの説明文 |
+| Codex CLI | `~\.codex\config.toml` | `~\.codex\AGENTS.md` の専用セクション |
+| Gemini CLI | `~\.gemini\settings.json` | `~\.gemini\GEMINI.md` の専用セクション |
+| Cursor | `~\.cursor\mcp.json` | MCP サーバーの説明文 |
+| VS Code | `%APPDATA%\Code\User\mcp.json` | MCP サーバーの説明文 |
+| Windsurf | `~\.codeium\windsurf\mcp_config.json` | MCP サーバーの説明文 |
+
+- 設定ファイルのほかの内容はそのまま残します。最初に書き換える前に、元のファイルを `*.bak-terminal-windows` として保存します。
+- コメント入りの JSON（VS Code など）は書き換えず、貼り付ける設定を表示します。
+- exe の場所を絶対パスで登録するので、PATH の変更がまだ反映されていないアプリでも動きます。
+- 上の表にないツールには、`terminal-windows mcp --config` で出る設定を貼ってください。
+
+MCP に対応した AI ツールから、次のツールで VM を操作できます。
 
 | ツール | 内容 |
 |---|---|

@@ -45,7 +45,8 @@ AI inside the VM:
   terminal-windows exec NAME SCRIPT [--timeout 300]    run one PowerShell script inside the VM
   terminal-windows tune NAME [--defender] [--yes]      lighter guest: no visual effects/indexing/SysMain, high-perf power
   terminal-windows skills install [--dir PATH] | skills get
-  terminal-windows connect [NAME]          let this PC's Claude Code use the VM (MCP + skill)
+  terminal-windows connect [NAME] [--dry-run]  let this PC's AI tools use the VM (Claude Code, Claude Desktop,
+                                           Codex, Gemini CLI, Cursor, VS Code, Windsurf: MCP + usage guide)
   terminal-windows update-helper NAME
   terminal-windows iso-info ISO [--edition NAME]      (list editions; create picks Pro by default)
   terminal-windows selftest NAME [--with-restore]      (real-VM checklist; writes logsselftest-*.md)
