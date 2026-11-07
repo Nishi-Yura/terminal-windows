@@ -43,7 +43,7 @@ Usage:
   terminal-windows mcp [NAME] [--config] [--sync-outbox]
 
 AI inside the VM:
-  terminal-windows agent-install NAME [--agent claude|codex|gemini] [--yes]   install an AI CLI + desktop MCP + instructions in the guest
+  terminal-windows agent-install NAME --agent claude|codex|gemini [--yes]   install an AI CLI + desktop MCP + instructions in the guest
   terminal-windows claude|codex|gemini NAME [--window] [-- ARGS]   (--window: in a window on the VM's desktop, shown via the viewer)
   terminal-windows claude|codex|gemini NAME [-- ARGS]  run that agent inside the VM, shown in this terminal (Ctrl+] detaches)
   terminal-windows term NAME [--cwd DIR] [-- COMMAND]  a terminal inside the VM (default PowerShell)
@@ -52,7 +52,7 @@ AI inside the VM:
   terminal-windows skills install [--dir PATH] | skills get
   terminal-windows connect [NAME] [--list] [--tool ID[,ID]] [--remove] [--dry-run]
                                let this PC's AI tools use the VM (MCP + usage guide). --list shows every supported tool;
-                               IDs: claude-code claude-desktop codex gemini antigravity cursor vscode cline windsurf lmstudio
+                               IDs: antigravity claude-code claude-desktop cline codex cursor gemini lmstudio vscode windsurf
   terminal-windows update-helper NAME
   terminal-windows iso-info ISO [--edition NAME]      (list editions; create picks Pro by default)
   terminal-windows selftest NAME [--with-restore]      (real-VM checklist; writes logsselftest-*.md)

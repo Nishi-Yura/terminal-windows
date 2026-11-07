@@ -28,8 +28,8 @@ from here and you cannot touch it. They can watch this VM's screen live, so work
 
 ## Your own window — do not type into yourself
 
-You may be running in a **Windows Terminal window on this same desktop** (title "Claude Code",
-"Codex" or "Gemini CLI"). Keys and text from the `desktop` tools go to whatever window has focus.
+You may be running in a **Windows Terminal window on this same desktop** (titled with your
+name: "Codex", "Gemini CLI" or "Claude Code"). Keys and text from the `desktop` tools go to whatever window has focus.
 
 - Before `type` / `key`, make sure the **target** window is in front: click inside it (or its taskbar
   button), then check with a `screenshot` or `status` (`foregroundWindow`).

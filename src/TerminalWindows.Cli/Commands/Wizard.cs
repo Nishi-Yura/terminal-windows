@@ -34,7 +34,7 @@ public static class Wizard
         try { return GetConsoleProcessList(new uint[4], 4) == 1; } catch { return false; }
     }
 
-    /// <summary>Same place as install.ps1. Not AppData: packaged apps (the Claude desktop app) see a virtualized AppData.</summary>
+    /// <summary>Same place as install.ps1. Not AppData: packaged apps (Store-style desktop apps) see a virtualized AppData.</summary>
     public static string InstallDir => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".terminal-windows", "bin");
 
@@ -108,7 +108,7 @@ public static class Wizard
             await Lifecycle.CreateAsync(Args(Name, "--iso", iso, "--backend", backend));
         }
 
-        var agentId = state["agent"]?.GetValue<string>() ?? "claude";
+        var agentId = state["agent"]?.GetValue<string>() ?? AskAgent();
         if (agentId != "none" && state["agentInstalled"]?.GetValue<bool>() != true)
         {
             Step(T($"VM の中に {agentId} を入れます", $"Installing {agentId} inside the VM"));
@@ -217,7 +217,7 @@ public static class Wizard
             items.Add((T("VM の中のターミナル（PowerShell、文字だけ）", "A terminal inside the VM (PowerShell, text only)"),
                 async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
             items.Add((T("AI の成果物（Outbox）を この PC に取り込む", "Fetch the AI's results (Outbox) to this PC"), () => FetchOutboxAsync(m)));
-            items.Add((T("この PC の AI（Claude Code・Claude Desktop・Codex・Gemini CLI・Cursor など）から VM を使えるようにする", "Let this PC's AI tools (Claude Code, Claude Desktop, Codex, Gemini CLI, Cursor, ...) use the VM"),
+            items.Add((T("この PC の AI ツール（MCP に対応したもの）から VM を使えるようにする", "Let this PC's AI tools (any MCP client) use the VM"),
                 () => ConnectCommand.RunAsync(Args(name))));
             items.Add((T("スナップショット（撮る・戻す・消す）", "Snapshots (take / restore / delete)"), () => SnapshotMenuAsync(m)));
             items.Add((vmState == VmState.Running ? T("VM を止める（状態を保存。次回そのまま再開）", "Stop the VM (state is saved; resumes as it was)") : T("VM を起動する", "Start the VM"),
@@ -374,8 +374,8 @@ public static class Wizard
                     // The installed copy is running (an MCP server of an open AI app, say): Windows lets us rename it.
                     File.Move(target, Path.Combine(InstallDir, $"terminal-windows.old-{DateTime.Now:yyyyMMddHHmmss}.exe"));
                     File.Copy(self, target);
-                    Console.WriteLine(T("  古い terminal-windows が動いていたので入れ替えました。使っているアプリ（Claude Code など）を開き直すと新しい版になります。",
-                                        "  The old terminal-windows was running and has been replaced; restart apps that use it (e.g. Claude Code)."));
+                    Console.WriteLine(T("  古い terminal-windows が動いていたので入れ替えました。使っている AI アプリを開き直すと新しい版になります。",
+                                        "  The old terminal-windows was running and has been replaced; restart the AI apps that use it."));
                 }
                 // A guest\ folder from an older two-file install would shadow the helper embedded in the exe.
                 var oldGuest = Path.Combine(InstallDir, "guest");
@@ -631,9 +631,22 @@ public static class Wizard
     private static string AskAgent()
     {
         Step(T("VM の中で使う AI を選んでください", "Choose the AI to run inside the VM"));
-        Console.WriteLine("  1) Claude Code   2) Codex   3) Gemini CLI   4) " + T("入れない", "none"));
-        Console.Write(T("  番号 [1]: ", "  Number [1]: "));
-        return (Console.ReadLine() ?? "").Trim() switch { "2" => "codex", "3" => "gemini", "4" => "none", _ => "claude" };
+        Console.WriteLine("  1) Claude Code (Anthropic)   2) Codex CLI (OpenAI)   3) Gemini CLI (Google)   4) " + T("入れない", "none"));
+        // No default: the choice is the user's.
+        while (true)
+        {
+            Console.Write(T("  番号: ", "  Number: "));
+            var line = Console.ReadLine();
+            if (line is null) return "none"; // no input at all (piped): install nothing
+            switch (line.Trim())
+            {
+                case "1": return "claude";
+                case "2": return "codex";
+                case "3": return "gemini";
+                case "4": return "none";
+            }
+            Console.WriteLine(T("  1〜4 の番号を入れてください。", "  Enter a number from 1 to 4."));
+        }
     }
 
     // ---- small helpers ----

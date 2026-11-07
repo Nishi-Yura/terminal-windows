@@ -332,10 +332,7 @@ public static class McpCommand
             Console.WriteLine("# Easiest: register with every AI tool on this PC (or one: --tool ID; list: --list)");
             Console.WriteLine($"terminal-windows connect {name}");
             Console.WriteLine();
-            Console.WriteLine("# Claude Code");
-            Console.WriteLine($"claude mcp add --scope user terminal-windows -- \"{exe}\" mcp {name}");
-            Console.WriteLine();
-            Console.WriteLine("# Most clients (Claude Desktop, Cursor, Windsurf, Gemini CLI, Antigravity, Cline, LM Studio, ...): \"mcpServers\"");
+            Console.WriteLine("# Most clients (Antigravity, Claude Desktop, Cline, Cursor, Gemini CLI, LM Studio, Windsurf, ...): \"mcpServers\"");
             Output.Json(new JsonObject { ["mcpServers"] = new JsonObject { ["terminal-windows"] = ConnectCommand.Stdio(exe, name) } });
             Console.WriteLine();
             Console.WriteLine("# VS Code (mcp.json): \"servers\"");
@@ -343,6 +340,9 @@ public static class McpCommand
             Console.WriteLine();
             Console.WriteLine("# Codex CLI (~/.codex/config.toml)");
             Console.Write(ConnectCommand.TomlBlock(exe, name));
+            Console.WriteLine();
+            Console.WriteLine("# Claude Code");
+            Console.WriteLine($"claude mcp add --scope user terminal-windows -- \"{exe}\" mcp {name}");
             Console.WriteLine();
             Console.WriteLine("# AIs without MCP that can run commands: tell them to run this first, then use 'terminal-windows action'");
             Console.WriteLine("terminal-windows skills get");

@@ -34,7 +34,10 @@ public static class ConnectCommand
             (exe, m, dry) => Task.FromResult(string.Join("; ", files().Select(f => JsonServer(f, key, Stdio(exe, m, typed), dry)))),
             dry => Task.FromResult(string.Join("; ", files().Select(f => JsonRemove(f, key, dry)))));
 
-    public static IReadOnlyList<Target> Targets() => new[]
+    /// <summary>Every supported tool, in alphabetical order of ID (no tool comes first by preference).</summary>
+    public static IReadOnlyList<Target> Targets() => AllTargets().OrderBy(t => t.Id, StringComparer.Ordinal).ToList();
+
+    private static Target[] AllTargets() => new[]
     {
         new Target("claude-code", "Claude Code",
             () => ClaudeExe() is not null, () => new[] { Path.Combine(Home, ".claude.json") }, ClaudeCodeAsync, ClaudeCodeRemoveAsync),

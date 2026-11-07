@@ -12,7 +12,7 @@ namespace TerminalWindows.Cli.Commands;
 ///   term NAME [-- COMMAND...]      a terminal session in the guest (default: PowerShell)
 ///   claude NAME [-- ARGS...]       Claude Code running in the guest, shown in this terminal
 ///   exec NAME SCRIPT               run one PowerShell script in the guest
-///   agent-install NAME --yes       install Git, Claude Code, the desktop MCP and its skill in the guest
+///   agent-install NAME --agent ID --yes   install Git, the chosen AI CLI, the desktop MCP and its instructions in the guest
 /// The host stays the manager: snapshots, restores, file hand-off and stopping the VM.
 /// </summary>
 public static class Agent
@@ -307,7 +307,8 @@ public static class Agent
     {
         var m = MachineStore.Load(a.Machine());
         bool yes = a.Flag("yes");
-        var agent = Profile(a.Opt("agent") ?? "claude");
+        // No default AI: the user picks one.
+        var agent = Profile(a.Opt("agent") ?? throw new UsageException("agent-install needs --agent claude|codex|gemini"));
         a.RejectUnknown();
         var steps = InstallSteps(agent.Id);
         if (!yes)

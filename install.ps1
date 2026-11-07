@@ -1,8 +1,8 @@
 # Installs terminal-windows for the current user (no administrator rights needed).
-#   - copies dist\ to %USERPROFILE%\.terminal-windows\bin (not AppData: packaged apps such as the
-#     Claude desktop app see a virtualized AppData, so an exe installed there may be invisible elsewhere)
+#   - copies dist\ to %USERPROFILE%\.terminal-windows\bin (not AppData: packaged apps such as
+#     Store-style desktop apps see a virtualized AppData, so an exe installed there may be invisible elsewhere)
 #   - adds that folder to the user PATH (only if it is not there yet)
-#   - optionally installs the Claude Code skill and registers the MCP server
+#   - optionally registers the MCP server and usage guide with the AI tools on this PC (-Mcp: 'connect')
 # Usage: powershell -ExecutionPolicy Bypass -File install.ps1 [-Skill] [-Mcp] [-Machine default]
 param(
     [switch]$Skill,
@@ -27,7 +27,7 @@ try {
     # running exe but can rename it: move it aside, then copy. Running copies keep working until restarted.
     Rename-Item $target ("terminal-windows.old-{0:yyyyMMddHHmmss}.exe" -f (Get-Date))
     Copy-Item (Join-Path $src 'terminal-windows.exe') $target -Force
-    Write-Host "The old version was still running; restart apps that use it (for example Claude Code) to load the new one."
+    Write-Host "The old version was still running; restart apps that use it (your AI apps) to load the new one."
 }
 # The guest helper is embedded in terminal-windows.exe; an old guest\ copy would shadow it.
 if (Test-Path (Join-Path $dest 'guest')) { Remove-Item -Recurse -Force (Join-Path $dest 'guest') }
@@ -41,13 +41,6 @@ if ($parts -notcontains $dest) {
 }
 
 $exe = Join-Path $dest 'terminal-windows.exe'
-if ($Skill) { & $exe skills install }
-if ($Mcp) {
-    if (Get-Command claude -ErrorAction SilentlyContinue) {
-        & claude mcp add --scope user terminal-windows -- $exe mcp $Machine
-    } else {
-        Write-Host "Claude Code CLI not found. Register manually with:"
-        Write-Host "  claude mcp add --scope user terminal-windows -- `"$exe`" mcp $Machine"
-    }
-}
+# -Skill and -Mcp both register with every AI tool found on this PC (MCP server + usage guide).
+if ($Skill -or $Mcp) { & $exe connect $Machine }
 & $exe doctor

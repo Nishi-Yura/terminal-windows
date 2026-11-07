@@ -13,7 +13,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 
 - 🤖 **AI はその VM の中だけで作業します。** ホスト PC のマウス・キーボード・クリップボードには一切触れないので、AI が作業している間もあなたは PC を普段どおり使えます。
 - 🖥️ **VM の画面はターミナルの中に表示されます。** 見るだけでなく、クリックや入力もできます。
-- 🧩 **AI のつなぎ方は 2 通りあります。** ホストの AI ツール（Claude Code、Claude Desktop、Codex、Gemini CLI、Cursor など）から MCP で操作する方法と、AI そのものを VM の中で動かす方法です。
+- 🧩 **AI のつなぎ方は 2 通りあります。** ホストの AI ツール（MCP に対応したもの。Codex CLI、Gemini CLI、Claude、Cursor、VS Code など）から MCP で操作する方法と、AI そのものを VM の中で動かす方法です。
 - 🏠 **Windows 11 Home でも動きます。** Hyper-V は使わず、無料の VMware Workstation か VirtualBox を使います。
 
 ---
@@ -45,7 +45,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 | **失敗しても戻せる** | スナップショットと巻き戻しができます。巻き戻す前の状態も自動で保存します。 |
 | **作業を引き継げる** | 停止は「状態保存」が既定です。アプリを開いたまま止めて、続きから再開できます。作業ノートはホスト側に残ります。 |
 | **ファイルは安全に受け渡し** | 共有フォルダは使わず、Inbox / Outbox を通してコピーします（SHA-256 で照合し、上書きはしません）。 |
-| **VM の中で AI を動かせる** | `terminal-windows claude` で、VM の中の Claude Code をホストのターミナルから使えます。 |
+| **VM の中で AI を動かせる** | Claude Code / Codex CLI / Gemini CLI のうち選んだものを VM の中に入れ、ホストのターミナルから使えます（`terminal-windows claude` / `codex` / `gemini`）。 |
 
 
 ---
@@ -58,7 +58,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 - 実機で確認済みのこと（Windows 11 Home、VMware Workstation 17.6、ハイパーバイザー有効）:
   - ISO からの完全自動セットアップ（約 12 分）、`selftest` 19 項目
   - ターミナルと専用の窓での画面表示と操作、MCP、スナップショット
-  - VM の中の Claude Code（VM のデスクトップの窓で表示）
+  - VM の中の AI（VM のデスクトップの窓で表示。Claude Code で確認）
   - **まっさらな Windows 11 での通しテスト:** 1 行インストール（106 秒。.NET SDK の導入からビルド、インストールまで）、VirtualBox の自動インストール（25 秒）、セットアップの案内
 - VirtualBox は、Windows のハイパーバイザーを切った状態で動作を確認しています。
 - まだのこと: 実際の新しい PC で VM の作成まで通すこと、VMware のインストーラーの自動起動、Codex / Gemini の VM の中での実機確認。
@@ -99,7 +99,7 @@ irm https://raw.githubusercontent.com/Nishi-Yura/terminal-windows/main/get.ps1 |
 1. VirtualBox が入っていなければ、winget で入れます（管理者の確認画面が出ます）。
 2. Windows のハイパーバイザー（メモリ整合性・VBS・WSL2 など）が動いていると、VM がとても遅く、固まることがあります。その場合はオフにするか聞きます。「はい」を選ぶと、管理者の確認画面が出たあと再起動します。サインインすると、続きから自動で再開します。オフの間は WSL2 / Docker が使えません。元に戻すときは `terminal-windows host-mode secure --yes` を実行します。
 3. ダウンロードフォルダーかデスクトップにある Windows 11 の ISO を使います。見つからなければ Microsoft の公式ページを開き、ダウンロードが終わると自動で次に進みます。
-4. VM の中で使う AI（Claude Code / Codex / Gemini CLI）を選びます。VM の作成（30〜60 分）、AI の導入、軽量化、スナップショット作成まで自動で進みます。
+4. VM の中で使う AI（Claude Code / Codex CLI / Gemini CLI、または入れない）を選びます。VM の作成（30〜60 分）、AI の導入、軽量化、スナップショット作成まで自動で進みます。
 5. 最後に AI が開くので、サインインします。次からは exe を開くだけで、VM の中の AI につながります。
 
 何をするかだけを確認したいときは、`terminal-windows setup --dry-run` を実行します。何も入れず、何も変えずに、確認結果だけを表示します。
@@ -119,18 +119,18 @@ irm https://raw.githubusercontent.com/Nishi-Yura/terminal-windows/main/get.ps1 |
 
 ```
 == terminal-windows: default (vmware, 起動中) ==
-  1) claude を開く（VM のデスクトップの窓で。画面ごと見えます）
+  1) codex を開く（VM のデスクトップの窓で。画面ごと見えます）   ← 選んだ AI の名前が出ます
   2) 画面を見る・操作する
   3) VM の中のターミナル（PowerShell、文字だけ）
   4) AI の成果物（Outbox）を この PC に取り込む
-  5) この PC の AI（Claude Code・Claude Desktop・Codex・Gemini CLI・Cursor など）から VM を使えるようにする
+  5) この PC の AI ツール（MCP に対応したもの）から VM を使えるようにする
   6) スナップショット（撮る・戻す・消す）
   7) VM を止める（状態を保存。次回そのまま再開）
   8) 開いたときに最初に出すもの: このメニュー（変更）
   q) 終わる（VM はそのまま）
 ```
 
-- `terminal-windows claude --window` で、AI の窓を直接開くこともできます。
+- `terminal-windows codex --window`（`claude` / `gemini` も同じ）で、AI の窓を直接開くこともできます。
 - マシンが `default` だけのときは、コマンドのマシン名を省略できます（`terminal-windows view`、`terminal-windows push file.txt` など）。
 - 画面はターミナルの中に表示します。画像表示（Sixel / kitty）に対応していないターミナルでは、色付きの文字で表示します（解像度は低めです）。
   - Windows Terminal は Sixel の画像を「1 文字 = 横 10 × 縦 20 ピクセル」として扱うので、表示の大きさは窓の大きさ（文字数）で決まります。小さい窓では上の行に「縮小 79%」のように出ます。**窓を最大化するか、Ctrl+- で文字を小さくすると**大きく映ります。
@@ -195,16 +195,16 @@ terminal-windows connect
 
 | ID | ツール | MCP の登録先 | 使い方の説明 |
 |---|---|---|---|
+| `antigravity` | Antigravity（Google） | `~\.gemini\antigravity\mcp_config.json` | MCP サーバーの説明文 |
 | `claude-code` | Claude Code | `claude mcp add --scope user` | `~\.claude\skills\terminal-windows\SKILL.md` |
 | `claude-desktop` | Claude Desktop | `%LOCALAPPDATA%\Claude-Data\claude_*\claude_desktop_config.json`（古い版は `%APPDATA%\Claude\`） | MCP サーバーの説明文 |
-| `codex` | Codex CLI（OpenAI / ChatGPT） | `~\.codex\config.toml` | `~\.codex\AGENTS.md` の専用セクション |
-| `gemini` | Gemini CLI（Google） | `~\.gemini\settings.json` | `~\.gemini\GEMINI.md` の専用セクション |
-| `antigravity` | Antigravity（Google） | `~\.gemini\antigravity\mcp_config.json` | MCP サーバーの説明文 |
-| `cursor` | Cursor | `~\.cursor\mcp.json` | MCP サーバーの説明文 |
-| `vscode` | VS Code（Copilot のエージェント） | `%APPDATA%\Code\User\mcp.json` | MCP サーバーの説明文 |
 | `cline` | Cline（VS Code 拡張） | `…\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json` | MCP サーバーの説明文 |
-| `windsurf` | Windsurf | `~\.codeium\windsurf\mcp_config.json` | MCP サーバーの説明文 |
+| `codex` | Codex CLI（OpenAI / ChatGPT） | `~\.codex\config.toml` | `~\.codex\AGENTS.md` の専用セクション |
+| `cursor` | Cursor | `~\.cursor\mcp.json` | MCP サーバーの説明文 |
+| `gemini` | Gemini CLI（Google） | `~\.gemini\settings.json` | `~\.gemini\GEMINI.md` の専用セクション |
 | `lmstudio` | LM Studio（手元のモデル。無料） | `~\.lmstudio\mcp.json` | MCP サーバーの説明文 |
+| `vscode` | VS Code（Copilot のエージェント） | `%APPDATA%\Code\User\mcp.json` | MCP サーバーの説明文 |
+| `windsurf` | Windsurf | `~\.codeium\windsurf\mcp_config.json` | MCP サーバーの説明文 |
 
 ChatGPT のアプリ（Web / デスクトップ）は、手元の PC で動く MCP サーバーにはつなげません（リモートのサーバーだけに対応）。ChatGPT のアカウントで使う場合は Codex CLI を使ってください。
 
@@ -243,10 +243,11 @@ terminal-windows action default run "Get-ChildItem $env:USERPROFILE\Desktop"
 
 | ツール | 結果 |
 |---|---|
-| Claude Code | 接続して実際に操作（このリポジトリの開発で使用） |
-| Gemini CLI | `gemini mcp list` で Connected（作業フォルダーを信頼済みにする必要あり） |
+| Claude Code | 接続して実際に操作 |
 | Codex CLI | `codex mcp list` で enabled（`config.toml` を正しく読める） |
-| Claude Desktop / Cursor ほか | 設定ファイルどおりにサーバーを起動し、27 個のツールと VM の状態を取得 |
+| Gemini CLI | `gemini mcp list` で Connected（作業フォルダーを信頼済みにする必要あり） |
+| Claude Desktop | 設定ファイルどおりにサーバーを起動（アプリが MCP サーバーを立ち上げたことを確認） |
+| Cursor ほか | 設定ファイルどおりにサーバーを起動し、27 個のツールと VM の状態を取得 |
 
 MCP に対応した AI ツールから、次のツールで VM を操作できます。
 
@@ -274,24 +275,24 @@ MCP に対応した AI ツールから、次のツールで VM を操作でき�
 ### B. AI そのものを VM の中で動かす
 
 ```bash
-terminal-windows agent-install default --yes
+terminal-windows agent-install default --agent codex --yes
 ```
 
 ```bash
-terminal-windows claude default
+terminal-windows codex default
 ```
 
-`agent-install` は、VM の中に Git、Claude Code、画面操作用の MCP、スキルを入れます。`claude` を実行すると、VM の中の Claude Code がホストのターミナルに表示されます（**Ctrl+]** で切り離し）。
+`agent-install` は、VM の中に Git、選んだ AI、画面操作用の MCP、説明書を入れます（`--agent claude|codex|gemini` は必須です）。AI の名前のコマンドを実行すると、VM の中の AI がホストのターミナルに表示されます（**Ctrl+]** で切り離し）。
 
 - **サインインはご本人が行ってください。** 表示された URL をホストのブラウザで開き、出てきたコードを貼り付けます。
 - サインイン情報は VM の中に保存され、VM の中の AI からも読める状態になります。
 - VM からインターネットに出る必要があります（`--offline` の VM では使えません）。
 
-**Claude 以外の AI も使えます。** `--agent` で入れる AI を選べます。
+入れる AI は `--agent` で選びます。
 
 | AI | インストール | 起動 | 説明書の置き場所 |
 |---|---|---|---|
-| Claude Code（既定） | `agent-install NAME --yes` | `terminal-windows claude NAME` | `~\.claude\skills\terminal-windows-desktop\SKILL.md` |
+| Anthropic Claude Code | `agent-install NAME --agent claude --yes` | `terminal-windows claude NAME` | `~\.claude\skills\terminal-windows-desktop\SKILL.md` と `~\.claude\CLAUDE.md` |
 | OpenAI Codex CLI | `agent-install NAME --agent codex --yes` | `terminal-windows codex NAME` | `~\.codex\AGENTS.md` |
 | Google Gemini CLI | `agent-install NAME --agent gemini --yes` | `terminal-windows gemini NAME` | `~\.gemini\GEMINI.md` |
 
@@ -318,7 +319,7 @@ terminal-windows claude default
 | `clone NAME NEW` | セットアップ済みの状態から複製する |
 | `push` / `pull` NAME | ファイルを送る / 受け取る |
 | `notes NAME` | 作業ノートを見る |
-| `claude` / `term` / `exec` NAME | VM の中で Claude Code / 端末 / PowerShell を動かす |
+| `claude` / `codex` / `gemini` / `term` / `exec` NAME | VM の中で AI / 端末 / PowerShell を動かす |
 | `tune NAME --yes` | VM の中を軽くする |
 | `selftest NAME` | 実機での動作を確認する |
 | `doctor` | 環境を診断する |
@@ -408,7 +409,7 @@ terminal-windows-SPEC.md       設計の元になった仕様書
 
 `%USERPROFILE%\.terminal-windows\machines\NAME\`（`TERMINAL_WINDOWS_HOME` で変更できます）に、`machine.json`、VM のディスク、`outbox\` / `inbox\`、`notes.md`、`logs\` が入ります。
 
-`%LOCALAPPDATA%` は使いません。Claude デスクトップアプリなどパッケージ化されたアプリから起動されると、Windows が AppData への書き込みを別の場所に振り替えてしまうためです。
+`%LOCALAPPDATA%` は使いません。ストア版などパッケージ化されたアプリ（AI のデスクトップアプリなど）から起動されると、Windows が AppData への書き込みを別の場所に振り替えてしまうためです。
 
 ### テスト
 
@@ -420,7 +421,7 @@ dotnet test tests/TerminalWindows.Tests
 
 ### プラグイン
 
-このリポジトリは、Claude Code のプラグインとして入れられます（`.claude-plugin/`、`.mcp.json`、`skills/`）。先に `terminal-windows.exe` を 1 回開いて、インストールを済ませておいてください。
+ほかの AI ツールは `connect` で登録します。Claude Code を使う場合は、このリポジトリをプラグインとして入れることもできます（`.claude-plugin/`、`.mcp.json`、`skills/`）。先に `terminal-windows.exe` を 1 回開いて、インストールを済ませておいてください。
 
 ```
 /plugin marketplace add Nishi-Yura/terminal-windows

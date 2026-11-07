@@ -33,7 +33,7 @@ own mouse, keyboard and clipboard are never touched, so they keep working on the
    - `clipboard_set` + `key ctrl+v` for long or multi-line text; `clipboard_get` to read what an app copied.
 3. **Pixels** (`screenshot`, `click`, `drag`, `scroll`, `type`, `key`) when a control has no usable name
    (canvases, games, custom-drawn UI) or to check how something looks.
-- An AI may already be working inside the VM in a "Claude Code" / "Codex" / "Gemini CLI" terminal
+- An AI may already be working inside the VM in a "Codex" / "Gemini CLI" / "Claude Code" terminal
   window. Do not type into, close or minimise that window; bring your target app to the front first.
 
 ## The loop: observe → act → verify
