@@ -40,7 +40,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 | | |
 |---|---|
 | **完全無人セットアップ** | ISO を渡すだけ。Windows のインストール、アカウント作成、自動ログオン、ヘルパーの導入、スナップショット作成まで自動です。 |
-| **ターミナルでも窓でも見て触れる** | Windows Terminal（Sixel）や WezTerm（kitty）の中に VM の画面を表示します。画像に対応していないターミナルや、大きく見たいときは**専用の窓**で開きます（元の解像度のまま、窓の大きさは自由）。Win キーや Alt+Tab は **Ctrl+G** のパレット（窓ではアイコンのメニュー）から送れます。 |
+| **ターミナルで見て触れる** | Windows Terminal（Sixel）や WezTerm（kitty）の中に VM の画面を表示します。色はフレームごとに画面の色から作るので、ウィンドウの色や文字のにじみも元のままです。Win キーや Alt+Tab は **Ctrl+G** のパレットから送れます。 |
 | **AI 向けの操作がそろっている** | スクリーンショット、クリック、ドラッグ、日本語入力、キー操作に加えて、**UI Automation のツリー**でボタンの位置を正確に取れます。 |
 | **失敗しても戻せる** | スナップショットと巻き戻しができます。巻き戻す前の状態も自動で保存します。 |
 | **作業を引き継げる** | 停止は「状態保存」が既定です。アプリを開いたまま止めて、続きから再開できます。作業ノートはホスト側に残ります。 |
@@ -75,7 +75,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 | 仮想化ソフト | [Oracle VirtualBox](https://www.virtualbox.org/) 7.1 以上。本体だけで動きます（Extension Pack は不要） |
 | スペックの目安 | メモリ 16GB 以上、空きディスク 64GB 以上、BIOS で VT-x / AMD-V を有効にしておく |
 | Windows 11 の ISO | [Microsoft 公式ページ](https://www.microsoft.com/ja-jp/software-download/windows11)から入手します（約 8.3GiB）。**ゲストの Windows のライセンスは利用者の責任です。** |
-| ターミナル | どれでも可。Windows Terminal 1.22 以上か WezTerm ならターミナルの中に、それ以外は専用の窓に表示します |
+| ターミナル | Windows Terminal 1.22 以上か WezTerm（どちらもないときは色付きの文字で表示します） |
 | ビルドする場合 | .NET SDK 8 以上（1 行インストールでは自動で入ります） |
 
 ---
@@ -110,7 +110,7 @@ irm https://raw.githubusercontent.com/Nishi-Yura/terminal-windows/main/get.ps1 |
 
 - 画面を見ている間に **Ctrl+]**（または **F12**）を押すと、下の行にメニューが出ます。
 
-  `1:メニューへ戻る  2:スナップショット  3:VM を止める  4:Windows キー  Ctrl+]:画面を閉じる`
+  `1:メニューへ戻る  2:スナップショット  3:VM を止める  4:Windows キー  5:VM の解像度をこの枠に合わせる  6:元の解像度  Ctrl+]:画面を閉じる`
 
   スナップショットは、画面を見たまま裏で撮れます。
 - **Ctrl+G** を押すと、Windows のショートカット一覧（Win キー、Alt+Tab など）が出ます。
@@ -119,20 +119,21 @@ irm https://raw.githubusercontent.com/Nishi-Yura/terminal-windows/main/get.ps1 |
 ```
 == terminal-windows: default (vmware, 起動中) ==
   1) claude を開く（VM のデスクトップの窓で。画面ごと見えます）
-  2) 画面を見る・操作する（このターミナルの中で）
-  3) 画面を別の窓で開く（大きく・くっきり。窓の大きさは自由）
-  4) VM の中のターミナル（PowerShell、文字だけ）
-  5) AI の成果物（Outbox）を この PC に取り込む
-  6) この PC の AI（Claude Code・Claude Desktop・Codex・Gemini CLI・Cursor など）から VM を使えるようにする
-  7) スナップショット（撮る・戻す・消す）
-  8) VM を止める（状態を保存。次回そのまま再開）
-  9) 開いたときに最初に出すもの: このメニュー（変更）
+  2) 画面を見る・操作する
+  3) VM の中のターミナル（PowerShell、文字だけ）
+  4) AI の成果物（Outbox）を この PC に取り込む
+  5) この PC の AI（Claude Code・Claude Desktop・Codex・Gemini CLI・Cursor など）から VM を使えるようにする
+  6) スナップショット（撮る・戻す・消す）
+  7) VM を止める（状態を保存。次回そのまま再開）
+  8) 開いたときに最初に出すもの: このメニュー（変更）
   q) 終わる（VM はそのまま）
 ```
 
 - `terminal-windows claude --window` で、AI の窓を直接開くこともできます。
 - マシンが `default` だけのときは、コマンドのマシン名を省略できます（`terminal-windows view`、`terminal-windows push file.txt` など）。
-- 画面は、画像表示（Sixel / kitty）に対応したターミナルならその中に、対応していなければ**専用の窓**に表示します。`terminal-windows view --window` でいつでも窓で開けます。窓では、マウス（ダブルクリックやドラッグも）と日本語入力がそのまま VM に届きます。Win キーや Alt+Tab など PC 側が使ってしまうキーは、窓の左上のアイコン（または Alt+Space）のメニューから送ります。ターミナルの中で文字ブロック表示にしたいときは `--graphics blocks` を付けます。
+- 画面はターミナルの中に表示します。画像表示（Sixel / kitty）に対応していないターミナルでは、色付きの文字で表示します（解像度は低めです）。
+- **画質について:** Windows Terminal は Sixel の画像を「1 文字 = 横 10 × 縦 20 ピクセル」として扱うので、表示できる細かさは窓の大きさ（文字数）で決まります。VM の画面（1366x768）より小さい窓では縮小して映り、下の行に「縮小 79%」のように表示します。**窓を最大化するか、Ctrl+- で文字を小さくすると**くっきりします。Ctrl+] のメニューの 5 で、VM の解像度をこの枠に合わせることもできます（VMware の画面ドライバーにある大きさの中で、今よりくっきりするときだけ変えます。6 で元に戻ります）。
+- ターミナルの外に窓を開きたいときは `terminal-windows view --window` で専用の窓（元の解像度、マウスと日本語入力もそのまま）が開きます。
 
 ### コマンドで進める方法
 

@@ -21,7 +21,7 @@ Usage:
                           [--edition Pro] [--image-index N] [--product-key KEY] [--auto-snapshot] [--share PATH [--share-writable]]
   terminal-windows start|pause|resume NAME
   terminal-windows stop NAME [--shutdown | --force] [--auto-snapshot]   (default: save state)
-  terminal-windows view NAME [--window | --graphics sixel|kitty|blocks]   (in this terminal; --window or a terminal without graphics: its own window)
+  terminal-windows view NAME [--window | --graphics sixel|kitty|blocks]   (in this terminal; --window: a window of its own)
   terminal-windows view-demo [--graphics sixel|kitty|blocks|window]   (viewer check without a VM; input is only logged)
   terminal-windows show|hide NAME
   terminal-windows ls

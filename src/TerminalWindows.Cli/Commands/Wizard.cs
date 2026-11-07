@@ -197,9 +197,7 @@ public static class Wizard
             if (agent is not null and not "none")
                 items.Add((T($"{agent} を開く（VM のデスクトップの窓で。画面ごと見えます）", $"Open {agent} in a window on the VM's desktop, shown here"),
                     () => RunAgentWindowAsync(name, agent)));
-            items.Add((T("画面を見る・操作する（このターミナルの中で）", "Watch and use the screen (in this terminal)"), () => Lifecycle.ViewAsync(Args(name))));
-            items.Add((T("画面を別の窓で開く（大きく・くっきり。窓の大きさは自由）", "Open the screen in its own window (full resolution, resizable)"),
-                () => Lifecycle.ViewAsync(Args(name, "--window"))));
+            items.Add((T("画面を見る・操作する", "Watch and use the screen"), () => Lifecycle.ViewAsync(Args(name))));
             items.Add((T("VM の中のターミナル（PowerShell、文字だけ）", "A terminal inside the VM (PowerShell, text only)"),
                 async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
             items.Add((T("AI の成果物（Outbox）を この PC に取り込む", "Fetch the AI's results (Outbox) to this PC"), () => FetchOutboxAsync(m)));

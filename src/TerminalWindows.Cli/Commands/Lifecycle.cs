@@ -176,10 +176,9 @@ public static class Lifecycle
     {
         var caps = TerminalCaps.Detect(protocol);
         ViewerExit exit;
-        // Terminals without Sixel/kitty graphics, or no console at all: a window of our own at full
-        // resolution (--graphics blocks keeps the character-block mode inside the terminal).
-        if (caps.Protocol == GraphicsProtocol.Window || caps.Protocol == GraphicsProtocol.None
-            || Console.IsInputRedirected || Console.IsOutputRedirected)
+        // Always inside the terminal (character blocks when it has no Sixel/kitty graphics). A window of
+        // our own only when asked for (--window), or when there is no console to draw in at all.
+        if (caps.Protocol == GraphicsProtocol.Window || Console.IsInputRedirected || Console.IsOutputRedirected)
         {
             Console.WriteLine(Ui.T("VM の画面を別の窓で開きました。窓を閉じると戻ります（Windows キーなどは窓左上のアイコンのメニューから）。",
                                    "Opened the VM screen in its own window. Close it to come back (Windows key etc.: the menu under the window's icon)."));

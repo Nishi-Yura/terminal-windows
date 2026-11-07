@@ -48,7 +48,12 @@ public static class SixelEncoder
             for (int x = 0, i = y * w, o = i * 4; x < w; x++, i++, o += 4)
                 idx[i] = Lut[((p[o + 2] >> 3) << 10) | ((p[o + 1] >> 3) << 5) | (p[o] >> 3)];
         });
+        return EncodeIndexed(idx, w, h, PaletteHeader);
+    }
 
+    /// <summary>Encodes palette indices with the given palette ("#i;2;r;g;b" entries, percent).</summary>
+    internal static string EncodeIndexed(byte[] idx, int w, int h, string paletteHeader)
+    {
         // Bands of 6 rows are independent: encode them in parallel, then concatenate in order.
         int bands = (h + 5) / 6;
         var parts = new string[bands];
@@ -58,9 +63,9 @@ public static class SixelEncoder
             return s;
         }, _ => { });
 
-        var sb = new StringBuilder(parts.Sum(x => x.Length) + PaletteHeader.Length + 64);
+        var sb = new StringBuilder(parts.Sum(x => x.Length) + paletteHeader.Length + 64);
         sb.Append("\u001bP0;1;0q\"1;1;").Append(w).Append(';').Append(h);
-        sb.Append(PaletteHeader);
+        sb.Append(paletteHeader);
         foreach (var part in parts) sb.Append(part);
         sb.Append("\u001b\\");
         return sb.ToString();

@@ -23,11 +23,13 @@ public sealed class TerminalViewer
     /// <summary>What is actually drawn: the detected protocol, or after probing the terminal Sixel or blocks.</summary>
     private GraphicsProtocol _protocol;
     private readonly BlockEncoder _blocks = new();
+    private readonly AdaptiveSixelEncoder _sixel = new();
     private readonly object _frameLock = new();
     private BgraImage? _latest;
     private int _screenW = 1, _screenH = 1;
     private int _cellW = 10, _cellH = 20; // Windows Terminal maps Sixel pixels onto a 10x20 virtual cell
     private int _imgCols = 1, _imgRows = 1;
+    private int _imgW, _imgH, _guestW, _guestH; // frame size sent vs the guest's own screen size
     private int _frames;
     private readonly Stopwatch _fpsClock = Stopwatch.StartNew();
     private double _fps;
@@ -59,8 +61,8 @@ public sealed class TerminalViewer
 
     /// <summary>The command bar (Ctrl+] or F12): the menu's actions without leaving the screen.</summary>
     private static string CommandBar => Ui.T(
-        " 1:メニューへ戻る  2:スナップショット  3:VM を止める  4:Windows キー  Ctrl+]:画面を閉じる  その他のキー:取り消し ",
-        " 1:back to menu  2:snapshot  3:stop the VM  4:Windows keys  Ctrl+]:close viewer  other key:cancel ");
+        " 1:メニューへ戻る  2:スナップショット  3:VM を止める  4:Windows キー  5:VM の解像度をこの枠に合わせる（くっきり）  6:元の解像度  Ctrl+]:画面を閉じる  その他:取り消し ",
+        " 1:back to menu  2:snapshot  3:stop the VM  4:Windows keys  5:fit the VM's resolution to this view (sharp)  6:original resolution  Ctrl+]:close  other:cancel ");
 
     public async Task RunAsync()
     {
@@ -133,7 +135,7 @@ public sealed class TerminalViewer
                     {
                         GraphicsProtocol.Kitty => "\u001b[H" + KittyEncoder.Encode(img, _imgCols, _imgRows),
                         GraphicsProtocol.Blocks => _blocks.Encode(img),
-                        _ => "\u001b[H" + SixelEncoder.Encode(img),
+                        _ => "\u001b[H" + _sixel.Encode(img),
                     };
                     if (payload.Length > 0) Write(payload);
                     _frames++;
@@ -206,6 +208,36 @@ public sealed class TerminalViewer
                             case TextInput { Text: "3" }:
                                 Exit = ViewerExit.StopVm;
                                 return;
+                            case TextInput { Text: "5" or "6" } fit:
+                            {
+                                // 5: the guest renders at the size shown here, so nothing is shrunk and text is sharp.
+                                // 6: back to the machine's own resolution.
+                                var (fw, fh) = fit.Text == "5" ? FitTarget(cols, rows) : (_machine.Width, _machine.Height);
+                                try
+                                {
+                                    int shownW = _imgW, beforeW = _guestW, beforeH = _guestH;
+                                    var r = await control.CallAsync("set_resolution", new JsonObject { ["width"] = fw, ["height"] = fh }, TimeSpan.FromSeconds(30));
+                                    // The display driver only has fixed sizes: a mode smaller than what was already shown
+                                    // would be blurrier, so go back and say how to get more room instead.
+                                    if (fit.Text == "5" && r["width"]?.GetValue<int>() is int got && got < shownW * 0.98)
+                                    {
+                                        await control.CallAsync("set_resolution", new JsonObject { ["width"] = beforeW, ["height"] = beforeH }, TimeSpan.FromSeconds(30));
+                                        DrawStatus(Write, Ui.T(" この大きさでは VM の解像度を合わせてもくっきりしません。窓を最大化するか Ctrl+- で文字を小さくしてから、もう一度 5 を押してください ",
+                                                               " This view is too small for a sharper VM resolution. Maximise the window or press Ctrl+- (smaller text), then press 5 again "));
+                                        break;
+                                    }
+                                    await Task.Delay(800);
+                                    Write("[2J");
+                                    _blocks.Reset();
+                                    await StartStreamAsync(stream, cols, rows);
+                                    DrawStatus(Write, Ui.T($" VM の解像度: {r["width"]}x{r["height"]} ", $" VM resolution: {r["width"]}x{r["height"]} "));
+                                }
+                                catch (Exception ex) when (ex is RpcException or TimeoutException or IOException)
+                                {
+                                    DrawStatus(Write, Ui.T(" 解像度を変えられませんでした: ", " Could not change the resolution: ") + ex.Message);
+                                }
+                                break;
+                            }
                             case TextInput { Text: "4" }:
                                 paletteOpen = true;
                                 DrawStatus(Write, string.Join("  ", Palette.Select((p, i) => $"{PaletteKey(i)}:{p.Label}")) + Ui.T("  （他のキー: 取り消し）", "  (other key: cancel)"));
@@ -311,6 +343,7 @@ public sealed class TerminalViewer
         int sw = status["screen"]?["width"]?.GetValue<int>() ?? _machine.Width;
         int sh = status["screen"]?["height"]?.GetValue<int>() ?? _machine.Height;
         var (w, h) = Imaging.Fit(sw, sh, maxW, maxH);
+        (_guestW, _guestH) = (sw, sh);
         _imgCols = Math.Max(1, (int)Math.Ceiling(w / (double)_cellW));
         _imgRows = Math.Max(1, (int)Math.Ceiling(h / (double)_cellH));
         if (_protocol == GraphicsProtocol.Blocks) h -= h % 2; // whole cells: two pixel rows each
@@ -322,7 +355,15 @@ public sealed class TerminalViewer
         }
         // Blocks redraw every changed cell as text, so a lower frame rate keeps the terminal responsive.
         int fps = _protocol == GraphicsProtocol.Blocks ? 12 : 30;
+        (_imgW, _imgH) = (w, h);
         await stream.CallAsync("stream_start", new JsonObject { ["width"] = w, ["height"] = h, ["fps"] = fps });
+    }
+
+    /// <summary>The largest guest resolution that this view shows without shrinking (no smaller than 1024x600).</summary>
+    private (int W, int H) FitTarget(int cols, int rows)
+    {
+        int w = Math.Max(10, cols) * _cellW, h = Math.Max(4, rows - 1) * _cellH;
+        return (Math.Max(1024, w - w % 8), Math.Max(600, h - h % 2));
     }
 
     /// <summary>Maps a 1-based terminal cell to guest screen pixels (cell centre).</summary>
@@ -378,6 +419,9 @@ public sealed class TerminalViewer
     {
         int rows = Console.WindowHeight, cols = Console.WindowWidth;
         var mode = _protocol == GraphicsProtocol.Blocks ? Ui.T(" | 簡易表示（Windows Terminal ならフル解像度）", " | low-res text mode (Windows Terminal shows full resolution)") : "";
+        // Shrunk noticeably: say how to get a sharp picture.
+        if (_protocol != GraphicsProtocol.Blocks && _guestW > 0 && _imgW < _guestW * 0.95)
+            mode += Ui.T($" | 縮小 {_imgW * 100 / _guestW}%: 最大化か Ctrl+- でくっきり", $" | shrunk to {_imgW * 100 / _guestW}%: maximise or Ctrl+- for sharp");
         var text = message ?? Ui.T(
             $" {_machine.Name} | Ctrl+] または F12: メニュー（スナップショット・停止・戻る） | Ctrl+G: Windows キー | {_fps:0} fps{mode} ",
             $" {_machine.Name} | Ctrl+] or F12: menu (snapshot, stop, back) | Ctrl+G: Windows keys | {_fps:0} fps{mode} ");

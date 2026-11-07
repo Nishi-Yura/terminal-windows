@@ -126,7 +126,7 @@ public static class Doctor
         var gfx = TerminalCaps.Detect();
         checks.Add(new("terminal", gfx.Protocol == GraphicsProtocol.None ? "warn" : "ok",
             gfx.Protocol == GraphicsProtocol.None
-                ? $"{gfx.TerminalName}: no inline graphics detected. 'view' opens the screen in its own window (inside the terminal needs Windows Terminal 1.22+ or WezTerm)."
+                ? $"{gfx.TerminalName}: no inline graphics detected. 'view' shows the screen as coloured text blocks (low resolution). Windows Terminal 1.22+ or WezTerm show it at full resolution; 'view --window' opens a window instead."
                 : $"{gfx.TerminalName}: {gfx.Protocol}"));
 
         if (json)

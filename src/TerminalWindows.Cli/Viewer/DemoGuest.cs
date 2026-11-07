@@ -38,7 +38,7 @@ public sealed class DemoGuest : IAsyncDisposable
         var caps = TerminalCaps.Detect(protocol);
         await using var demo = new DemoGuest();
         demo.Start();
-        if (caps.Protocol is GraphicsProtocol.None or GraphicsProtocol.Window || Console.IsOutputRedirected)
+        if (caps.Protocol == GraphicsProtocol.Window || Console.IsOutputRedirected)
             await new NativeViewer(demo.Machine).RunAsync();
         else
             await new TerminalViewer(demo.Machine, caps).RunAsync();
