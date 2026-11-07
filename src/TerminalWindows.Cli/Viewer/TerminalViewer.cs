@@ -22,7 +22,7 @@ public sealed class TerminalViewer
     private readonly TerminalCaps _caps;
     /// <summary>What is actually drawn: the detected protocol, or after probing the terminal Sixel or blocks.</summary>
     private GraphicsProtocol _protocol;
-    private readonly BlockEncoder _blocks = new();
+    private readonly BlockEncoder _blocks = new() { TopRow = 1 };
     private readonly AdaptiveSixelEncoder _sixel = new();
     private readonly object _frameLock = new();
     private BgraImage? _latest;
@@ -59,10 +59,10 @@ public sealed class TerminalViewer
 
     public ViewerExit Exit { get; private set; } = ViewerExit.Quit;
 
-    /// <summary>The command bar (Ctrl+] or F12): the menu's actions without leaving the screen.</summary>
+    /// <summary>The command bar (F12): the menu's actions without leaving the screen.</summary>
     private static string CommandBar => Ui.T(
-        " 1:メニューへ戻る  2:スナップショット  3:VM を止める  4:Windows キー  5:VM の解像度をこの枠に合わせる（くっきり）  6:元の解像度  Ctrl+]:画面を閉じる  その他:取り消し ",
-        " 1:back to menu  2:snapshot  3:stop the VM  4:Windows keys  5:fit the VM's resolution to this view (sharp)  6:original resolution  Ctrl+]:close  other:cancel ");
+        " 1:閉じる  2:スナップショット  3:VM を止める  4:Windows キー  5:VM の解像度をこの枠に合わせる（くっきり）  6:元の解像度  その他:取り消し ",
+        " 1:close  2:snapshot  3:stop the VM  4:Windows keys  5:fit the VM's resolution to this view (sharp)  6:original resolution  other:cancel ");
 
     public async Task RunAsync()
     {
@@ -133,9 +133,9 @@ public sealed class TerminalViewer
                     if (img is null) continue;
                     var payload = _protocol switch
                     {
-                        GraphicsProtocol.Kitty => "\u001b[H" + KittyEncoder.Encode(img, _imgCols, _imgRows),
+                        GraphicsProtocol.Kitty => "\u001b[2;1H" + KittyEncoder.Encode(img, _imgCols, _imgRows),
                         GraphicsProtocol.Blocks => _blocks.Encode(img),
-                        _ => "\u001b[H" + _sixel.Encode(img),
+                        _ => "\u001b[2;1H" + _sixel.Encode(img),
                     };
                     if (payload.Length > 0) Write(payload);
                     _frames++;
@@ -212,7 +212,13 @@ public sealed class TerminalViewer
                             {
                                 // 5: the guest renders at the size shown here, so nothing is shrunk and text is sharp.
                                 // 6: back to the machine's own resolution.
-                                var (fw, fh) = fit.Text == "5" ? FitTarget(cols, rows) : (_machine.Width, _machine.Height);
+                                if (fit.Text == "5" && _machine.Scale >= 200)
+                                {
+                                    DrawStatus(Write, Ui.T(" HiDPI 表示（2 倍）なので、解像度は合わせなくてもくっきりします。もっと大きく見るには窓を最大化してください ",
+                                                           " The VM uses a HiDPI (2x) display, already sharp. Maximise the window to see it larger "));
+                                    break;
+                                }
+                                var (fw, fh) = fit.Text == "5" ? FitTarget(cols, rows) : Commands.Display.Target(_machine, _machine.Scale >= 200);
                                 try
                                 {
                                     int shownW = _imgW, beforeW = _guestW, beforeH = _guestH;
@@ -258,6 +264,9 @@ public sealed class TerminalViewer
                     switch (ev)
                     {
                         case ExitRequest:
+                            // Ctrl+]: close the viewer; the VM keeps running (back to the menu when opened from it).
+                            Exit = ViewerExit.Menu;
+                            return;
                         case KeyInput { Chord: "f12" }:
                             barOpen = true;
                             DrawStatus(Write, CommandBar);
@@ -337,7 +346,8 @@ public sealed class TerminalViewer
     private async Task StartStreamAsync(GuestClient stream, int cols, int rows)
     {
         int availCols = Math.Max(10, cols);
-        int availRows = Math.Max(4, rows - 1); // last row: status line
+        // First row: status line. The last row stays empty: a Sixel image that reaches it makes the terminal scroll.
+        int availRows = Math.Max(4, rows - 2);
         int maxW = availCols * _cellW, maxH = availRows * _cellH;
         var status = await stream.CallAsync("status");
         int sw = status["screen"]?["width"]?.GetValue<int>() ?? _machine.Width;
@@ -362,13 +372,14 @@ public sealed class TerminalViewer
     /// <summary>The largest guest resolution that this view shows without shrinking (no smaller than 1024x600).</summary>
     private (int W, int H) FitTarget(int cols, int rows)
     {
-        int w = Math.Max(10, cols) * _cellW, h = Math.Max(4, rows - 1) * _cellH;
+        int w = Math.Max(10, cols) * _cellW, h = Math.Max(4, rows - 2) * _cellH;
         return (Math.Max(1024, w - w % 8), Math.Max(600, h - h % 2));
     }
 
     /// <summary>Maps a 1-based terminal cell to guest screen pixels (cell centre).</summary>
     private (int X, int Y)? ToGuest(int col, int row)
     {
+        row -= 1; // row 1 is the status line
         if (col < 1 || row < 1 || col > _imgCols || row > _imgRows) return null;
         int sw, sh;
         lock (_frameLock) (sw, sh) = (_screenW, _screenH);
@@ -417,15 +428,16 @@ public sealed class TerminalViewer
 
     private void DrawStatus(Action<string> write, string? message)
     {
-        int rows = Console.WindowHeight, cols = Console.WindowWidth;
+        int cols = Console.WindowWidth;
         var mode = _protocol == GraphicsProtocol.Blocks ? Ui.T(" | 簡易表示（Windows Terminal ならフル解像度）", " | low-res text mode (Windows Terminal shows full resolution)") : "";
         // Shrunk noticeably: say how to get a sharp picture.
-        if (_protocol != GraphicsProtocol.Blocks && _guestW > 0 && _imgW < _guestW * 0.95)
-            mode += Ui.T($" | 縮小 {_imgW * 100 / _guestW}%: 最大化か Ctrl+- でくっきり", $" | shrunk to {_imgW * 100 / _guestW}%: maximise or Ctrl+- for sharp");
+        int layoutW = _guestW * 100 / Math.Max(100, _machine.Scale); // HiDPI: compare with the layout size, not the pixels
+        if (_protocol != GraphicsProtocol.Blocks && layoutW > 0 && _imgW < layoutW * 0.85)
+            mode += Ui.T($" | 縮小 {_imgW * 100 / layoutW}%: 最大化か Ctrl+- でくっきり", $" | shrunk to {_imgW * 100 / layoutW}%: maximise or Ctrl+- for sharp");
         var text = message ?? Ui.T(
-            $" {_machine.Name} | Ctrl+] または F12: メニュー（スナップショット・停止・戻る） | Ctrl+G: Windows キー | {_fps:0} fps{mode} ",
-            $" {_machine.Name} | Ctrl+] or F12: menu (snapshot, stop, back) | Ctrl+G: Windows keys | {_fps:0} fps{mode} ");
-        write($"\u001b7\u001b[{rows};1H\u001b[7m{Ui.FitWidth(text, cols)}\u001b[0m\u001b8");
+            $" {_machine.Name} | Ctrl+]: 閉じる | F12: メニュー | Ctrl+G: Windows キー | {_fps:0} fps{mode} ",
+            $" {_machine.Name} | Ctrl+]: close | F12: menu | Ctrl+G: Windows keys | {_fps:0} fps{mode} ");
+        write($"\u001b7\u001b[1;1H\u001b[7m{Ui.FitWidth(text, cols)}\u001b[0m\u001b8");
     }
 
     private async Task DetectCellSizeAsync(Action<string> write, System.Threading.Channels.Channel<byte[]> stdin, VtInputParser parser)

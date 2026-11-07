@@ -22,6 +22,8 @@ public sealed class MachineConfig
     public string? Paravirt { get; set; }
     public int Width { get; set; } = 1600;
     public int Height { get; set; } = 900;
+    /// <summary>Display scale inside the guest: 100, or 200 for HiDPI (twice the pixels, same layout; sharper in the viewer).</summary>
+    public int Scale { get; set; } = 100;
     public string Locale { get; set; } = "ja-JP";
     public string UiLanguage { get; set; } = "ja-JP";
     public string User { get; set; } = "agent";

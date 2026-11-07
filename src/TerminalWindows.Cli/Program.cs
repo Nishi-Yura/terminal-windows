@@ -28,6 +28,7 @@ Usage:
   terminal-windows delete NAME --yes                   (deletes the VM, its disk, snapshots and folder)
   terminal-windows status NAME
   terminal-windows resolution NAME WIDTHxHEIGHT          (change the VM's screen size)
+  terminal-windows display NAME [--hidpi | --standard]   (HiDPI: twice the pixels at 200%, sharp text in the viewer; new VMs use it)
   terminal-windows screen NAME [--out FILE]            (screenshot taken by the hypervisor; works during setup)
   terminal-windows snapshot NAME [--name LABEL] | restore NAME LABEL | snapshots NAME | delete-snapshot NAME LABEL --yes
   terminal-windows pull NAME [GUEST_PATH] [--to HOST_DIR] [--sync-outbox]
@@ -65,7 +66,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
     {
         "offline", "auto-snapshot", "share-writable", "no-view", "detach", "plan", "shutdown", "force",
         "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes", "defender", "dry-run", "window",
-        "exact", "gone", "list", "remove",
+        "exact", "gone", "list", "remove", "hidpi", "standard",
     };
 
     public static async Task<int> Main(string[] args)
@@ -98,6 +99,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
                 "resume" => await Lifecycle.PauseResumeAsync(parsed, pause: false),
                 "stop" => await Lifecycle.StopAsync(parsed),
                 "view" => await Lifecycle.ViewAsync(parsed),
+                "display" => await Display.RunAsync(parsed),
                 "show" => await Lifecycle.ShowHideAsync(parsed, show: true),
                 "hide" => await Lifecycle.ShowHideAsync(parsed, show: false),
                 "delete" => await Lifecycle.DeleteAsync(parsed),

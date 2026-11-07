@@ -7,6 +7,7 @@ using TerminalWindows.Cli.Backend;
 using TerminalWindows.Cli.Infrastructure;
 using TerminalWindows.Cli.Setup;
 using TerminalWindows.Cli.Viewer;
+using TerminalWindows.Protocol;
 
 namespace TerminalWindows.Cli.Commands;
 
@@ -120,6 +121,21 @@ public static class Wizard
             await Tune.RunAsync(Args(Name, "--yes"));
             state["tuned"] = true; SaveState(state);
         }
+        if (state["display"]?.GetValue<bool>() != true)
+        {
+            Step(T("画面を HiDPI（2 倍の細かさ）にします", "Switching the screen to HiDPI (twice the pixels)"));
+            try
+            {
+                var dm = MachineStore.Load(Name);
+                await using var dc = await GuestClient.ConnectAsync(dm);
+                Console.WriteLine("  " + await Display.ApplyAsync(dc, dm, hidpi: true));
+            }
+            catch (Exception ex) when (ex is CliException or RpcException or IOException or TimeoutException)
+            {
+                Console.WriteLine(T("  できませんでした（標準のまま使えます）: ", "  Skipped (standard works too): ") + ex.Message);
+            }
+            state["display"] = true; SaveState(state);
+        }
         if (state["snapshot"]?.GetValue<bool>() != true)
         {
             // Powered off: no RAM copy in the snapshot (several GB less), and the restart applies tune's settings.
@@ -168,7 +184,7 @@ public static class Wizard
     /// <summary>
     /// The everyday entry point once a VM exists (a double-click or a bare 'terminal-windows'). It goes
     /// straight to the configured start screen: the AI's window on the VM desktop, shown in this terminal
-    /// (or just the screen, or the menu). Ctrl+] / F12 in the screen opens the command bar; "back to menu"
+    /// (or just the screen, or the menu). In the screen Ctrl+] closes it (back to this menu) and F12 opens the command bar; "close"
     /// lands in the numbered menu below, which loops until the user quits.
     /// </summary>
     private static async Task<int> OpenAsync(JsonObject state)
@@ -180,7 +196,7 @@ public static class Wizard
 
         if (startup != "menu")
         {
-            Console.WriteLine(Ui.T($"{name} を開いています…（メニューは画面の中で Ctrl+] か F12）", $"Opening {name}… (menu: Ctrl+] or F12 inside the screen)"));
+            Console.WriteLine(Ui.T($"{name} を開いています…（Ctrl+] で閉じるとメニュー。画面の中のメニューは F12）", $"Opening {name}… (Ctrl+] closes it and shows the menu; F12: menu inside the screen)"));
             int rc = startup == "agent" && agent is not null and not "none"
                 ? await RunAgentWindowAsync(name, agent)
                 : await Lifecycle.ViewAsync(Args(name));
@@ -213,8 +229,8 @@ public static class Wizard
             if (freeGb < 10)
                 Console.WriteLine(T($"  ! ディスクの空きが少なくなっています（{freeGb:0} GB）。古いスナップショットを消すと空きます。",
                                     $"  ! Low disk space ({freeGb:0} GB free). Deleting old snapshots frees space."));
-            Console.WriteLine(T("  （画面を見ている間は Ctrl+] か F12 で、スナップショット・停止・メニューに戻るを選べます）",
-                                "  (while watching the screen, Ctrl+] or F12 gives snapshot / stop / back to menu)"));
+            Console.WriteLine(T("  （画面を見ている間: Ctrl+] で閉じてこのメニューへ、F12 でスナップショット・停止など、Ctrl+G で Windows キー）",
+                                "  (while watching the screen: Ctrl+] closes it and comes back here, F12 for snapshot / stop, Ctrl+G for Windows keys)"));
             for (int i = 0; i < items.Count; i++) Console.WriteLine($"  {i + 1}) {items[i].Label}");
             Console.WriteLine("  q) " + T("終わる（VM はそのまま）", "Quit (the VM stays as it is)"));
             Console.Write(T("  番号 [1]: ", "  Number [1]: "));

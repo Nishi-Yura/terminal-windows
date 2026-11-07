@@ -11,6 +11,9 @@ namespace TerminalWindows.Cli.Viewer;
 public sealed class BlockEncoder
 {
     private int[] _prev = Array.Empty<int>();
+
+    /// <summary>Rows above the picture (the viewer's status line).</summary>
+    public int TopRow { get; init; }
     private int _w, _h;
 
     /// <summary>Forget the previous frame (after a resize or a full-screen clear).</summary>
@@ -37,7 +40,7 @@ public sealed class BlockEncoder
                 int idx = (y * w + x) * 2;
                 if (_prev[idx] == top && _prev[idx + 1] == bottom) continue;
                 _prev[idx] = top; _prev[idx + 1] = bottom;
-                if (lastWritten != x) sb.Append("\u001b[").Append(y + 1).Append(';').Append(x + 1).Append('H');
+                if (lastWritten != x) sb.Append("\u001b[").Append(y + 1 + TopRow).Append(';').Append(x + 1).Append('H');
                 if (top != curFg) { AppendColor(sb, 38, top); curFg = top; }
                 if (bottom != curBg) { AppendColor(sb, 48, bottom); curBg = bottom; }
                 sb.Append('▀');
