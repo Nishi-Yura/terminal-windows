@@ -6,7 +6,7 @@ namespace TerminalWindows.Cli.Commands;
 
 /// <summary>
 /// <c>tune NAME [--defender] [--yes]</c>: makes the GUEST lighter for AI work (visual effects off,
-/// search indexing / SysMain / background apps off, high-performance power plan). With --defender it
+/// search indexing / SysMain / background apps and extras off, no automatic restarts, disk cleanup, high-performance power plan). With --defender it
 /// also excludes the whole system drive from Microsoft Defender scanning, which lowers the VM's own
 /// protection: acceptable only because the VM is disposable. Nothing on the host is changed.
 /// </summary>
@@ -82,6 +82,53 @@ public static class Tune
                 Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
                 'ok'
                 """),
+            ("Background extras off: Edge startup boost, Store auto-updates, OneDrive at sign-in, suggested apps, telemetry tasks",
+                """
+                $edge = 'HKLM:\SOFTWARE\Policies\Microsoft\Edge'
+                New-Item -Path $edge -Force | Out-Null
+                Set-ItemProperty $edge -Name StartupBoostEnabled -Value 0 -Type DWord
+                Set-ItemProperty $edge -Name BackgroundModeEnabled -Value 0 -Type DWord
+                $store = 'HKLM:\SOFTWARE\Policies\Microsoft\WindowsStore'
+                New-Item -Path $store -Force | Out-Null
+                Set-ItemProperty $store -Name AutoDownload -Value 2 -Type DWord
+                Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name OneDrive -ErrorAction SilentlyContinue
+                $cc = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent'
+                New-Item -Path $cc -Force | Out-Null
+                Set-ItemProperty $cc -Name DisableWindowsConsumerFeatures -Value 1 -Type DWord
+                foreach ($t in @(
+                    @('\Microsoft\Windows\Application Experience', 'Microsoft Compatibility Appraiser'),
+                    @('\Microsoft\Windows\Application Experience', 'ProgramDataUpdater'),
+                    @('\Microsoft\Windows\Customer Experience Improvement Program', 'Consolidator'),
+                    @('\Microsoft\Windows\Customer Experience Improvement Program', 'UsbCeip'))) {
+                    Disable-ScheduledTask -TaskPath ($t[0] + '\') -TaskName $t[1] -ErrorAction SilentlyContinue | Out-Null
+                }
+                'ok'
+                """),
+            ("Windows Update: keeps updating, but never restarts by itself while signed in; no peer-to-peer upload",
+                """
+                $au = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU'
+                New-Item -Path $au -Force | Out-Null
+                Set-ItemProperty $au -Name NoAutoRebootWithLoggedOnUsers -Value 1 -Type DWord
+                $do = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
+                New-Item -Path $do -Force | Out-Null
+                Set-ItemProperty $do -Name DODownloadMode -Value 0 -Type DWord
+                'ok'
+                """),
+            ("Disk: no hibernation file, no reserved storage, old update files and temp files removed, then TRIM (the VM's disk file grows less)",
+                """
+                powercfg /hibernate off
+                $r = & dism.exe /Online /Set-ReservedStorageState /State:Disabled /NoRestart 2>&1
+                if ($LASTEXITCODE -ne 0) { 'reserved storage: left as is (' + (($r | Select-Object -Last 1) -as [string]).Trim() + ')' }
+                & dism.exe /Online /Cleanup-Image /StartComponentCleanup /NoRestart | Out-Null
+                Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+                Remove-Item "$env:SystemRoot\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+                Stop-Service wuauserv -Force -ErrorAction SilentlyContinue
+                Remove-Item "$env:SystemRoot\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue
+                Start-Service wuauserv -ErrorAction SilentlyContinue
+                Optimize-Volume -DriveLetter ($env:SystemDrive.TrimEnd(':')) -ReTrim -ErrorAction SilentlyContinue
+                $free = (Get-PSDrive ($env:SystemDrive.TrimEnd(':'))).Free / 1GB
+                'ok (' + $env:SystemDrive + ' has ' + [math]::Round($free, 1) + ' GB free)'
+                """),
         };
         if (defender)
         {
@@ -119,7 +166,7 @@ public static class Tune
             JsonObject r;
             try
             {
-                r = await c.CallAsync("exec", new JsonObject { ["script"] = script, ["timeout_s"] = 120 }, TimeSpan.FromSeconds(150));
+                r = await c.CallAsync("exec", new JsonObject { ["script"] = script, ["timeout_s"] = 900 }, TimeSpan.FromSeconds(960));
             }
             catch (RpcException ex) when (ex.Message.Contains("Unknown op"))
             {

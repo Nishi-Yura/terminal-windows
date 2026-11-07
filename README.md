@@ -40,7 +40,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 | | |
 |---|---|
 | **完全無人セットアップ** | ISO を渡すだけ。Windows のインストール、アカウント作成、自動ログオン、ヘルパーの導入、スナップショット作成まで自動です。 |
-| **ターミナルで見て触れる** | Windows Terminal（Sixel）や WezTerm（kitty）に VM の画面を表示します。Win キーや Alt+Tab は **Ctrl+G** のパレットから送れます。 |
+| **ターミナルでも窓でも見て触れる** | Windows Terminal（Sixel）や WezTerm（kitty）の中に VM の画面を表示します。画像に対応していないターミナルや、大きく見たいときは**専用の窓**で開きます（元の解像度のまま、窓の大きさは自由）。Win キーや Alt+Tab は **Ctrl+G** のパレット（窓ではアイコンのメニュー）から送れます。 |
 | **AI 向けの操作がそろっている** | スクリーンショット、クリック、ドラッグ、日本語入力、キー操作に加えて、**UI Automation のツリー**でボタンの位置を正確に取れます。 |
 | **失敗しても戻せる** | スナップショットと巻き戻しができます。巻き戻す前の状態も自動で保存します。 |
 | **作業を引き継げる** | 停止は「状態保存」が既定です。アプリを開いたまま止めて、続きから再開できます。作業ノートはホスト側に残ります。 |
@@ -54,15 +54,16 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 
 **0.1.0（開発中）**
 
-- 自動テストは **159 件すべて合格**しています（GitHub Actions で毎回実行）。
+- 自動テストは **195 件すべて合格**しています（GitHub Actions で毎回実行）。
 - 実機で確認済みのこと（Windows 11 Home、VMware Workstation 17.6、ハイパーバイザー有効）:
   - ISO からの完全自動セットアップ（約 12 分）、`selftest` 19 項目
-  - ターミナルでの画面表示と操作、MCP、スナップショット
+  - ターミナルと専用の窓での画面表示と操作、MCP、スナップショット
   - VM の中の Claude Code（VM のデスクトップの窓で表示）
+  - **まっさらな Windows 11 での通しテスト:** 1 行インストール（106 秒。.NET SDK の導入からビルド、インストールまで）、VirtualBox の自動インストール（25 秒）、セットアップの案内
 - VirtualBox は、Windows のハイパーバイザーを切った状態で動作を確認しています。
-- まだのこと: まっさらな PC での通しテスト、Codex / Gemini の実機確認。
+- まだのこと: 実際の新しい PC で VM の作成まで通すこと、VMware のインストーラーの自動起動、Codex / Gemini の VM の中での実機確認。
 
-詳しくは [docs/VALIDATION.md](docs/VALIDATION.md) にまとめています。ビルド済みの配布物（Release）はまだありません。今はソースからビルドしてください。
+詳しくは [docs/VALIDATION.md](docs/VALIDATION.md) にまとめています。ビルド済みの配布物（Release）はありません。[1 行インストール](#いちばん簡単な方法-powershell-に-1-行)が、ソースから自動でビルドします。
 
 ---
 
@@ -74,14 +75,24 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 | 仮想化ソフト | [Oracle VirtualBox](https://www.virtualbox.org/) 7.1 以上。本体だけで動きます（Extension Pack は不要） |
 | スペックの目安 | メモリ 16GB 以上、空きディスク 64GB 以上、BIOS で VT-x / AMD-V を有効にしておく |
 | Windows 11 の ISO | [Microsoft 公式ページ](https://www.microsoft.com/ja-jp/software-download/windows11)から入手します（約 8.3GiB）。**ゲストの Windows のライセンスは利用者の責任です。** |
-| ターミナル | Windows Terminal 1.22 以上か WezTerm。どちらもない場合は VirtualBox のウィンドウで表示します |
-| ビルドする場合 | .NET SDK 8 以上 |
+| ターミナル | どれでも可。Windows Terminal 1.22 以上か WezTerm ならターミナルの中に、それ以外は専用の窓に表示します |
+| ビルドする場合 | .NET SDK 8 以上（1 行インストールでは自動で入ります） |
 
 ---
 
 ## クイックスタート
 
-### いちばん簡単な方法: exe をダブルクリック
+### いちばん簡単な方法: PowerShell に 1 行
+
+PowerShell を開いて、次の 1 行を貼り付けます（管理者権限は不要です）。
+
+```powershell
+irm https://raw.githubusercontent.com/Nishi-Yura/terminal-windows/main/get.ps1 | iex
+```
+
+ビルドに必要な .NET SDK がなければ Microsoft の公式スクリプトで `%USERPROFILE%\.terminal-windows\sdk` に入れ、このリポジトリのソースを取ってきてビルドし、インストールして、下のセットアップを始めます。同じ 1 行をもう一度実行すると最新版に更新されます。
+
+### exe をダブルクリック
 
 `terminal-windows.exe` は 1 つの exe で完結しています（VM 内のヘルパーも中に入っています）。ダブルクリックすると、セットアップの案内が始まります。質問に Enter（はい）で答えていくだけで、最後まで進みます。
 
@@ -108,19 +119,20 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 ```
 == terminal-windows: default (vmware, 起動中) ==
   1) claude を開く（VM のデスクトップの窓で。画面ごと見えます）
-  2) 画面を見る・操作する
-  3) VM の中のターミナル（PowerShell、文字だけ）
-  4) AI の成果物（Outbox）を この PC に取り込む
-  5) この PC の Claude Code から VM を使えるようにする（MCP とスキルを登録）
-  6) スナップショット（撮る・戻す・消す）
-  7) VM を止める（状態を保存。次回そのまま再開）
-  8) 開いたときに最初に出すもの: このメニュー（変更）
+  2) 画面を見る・操作する（このターミナルの中で）
+  3) 画面を別の窓で開く（大きく・くっきり。窓の大きさは自由）
+  4) VM の中のターミナル（PowerShell、文字だけ）
+  5) AI の成果物（Outbox）を この PC に取り込む
+  6) この PC の AI（Claude Code・Claude Desktop・Codex・Gemini CLI・Cursor など）から VM を使えるようにする
+  7) スナップショット（撮る・戻す・消す）
+  8) VM を止める（状態を保存。次回そのまま再開）
+  9) 開いたときに最初に出すもの: このメニュー（変更）
   q) 終わる（VM はそのまま）
 ```
 
 - `terminal-windows claude --window` で、AI の窓を直接開くこともできます。
 - マシンが `default` だけのときは、コマンドのマシン名を省略できます（`terminal-windows view`、`terminal-windows push file.txt` など）。
-- 画面は必ずターミナルの中に表示します。画像表示（Sixel / kitty）に対応していないターミナルでは、色付きの文字で表示します（解像度は低めです）。VMware や VirtualBox のウィンドウを開きたいときだけ、`terminal-windows show` を使います。
+- 画面は、画像表示（Sixel / kitty）に対応したターミナルならその中に、対応していなければ**専用の窓**に表示します。`terminal-windows view --window` でいつでも窓で開けます。窓では、マウス（ダブルクリックやドラッグも）と日本語入力がそのまま VM に届きます。Win キーや Alt+Tab など PC 側が使ってしまうキーは、窓の左上のアイコン（または Alt+Space）のメニューから送ります。ターミナルの中で文字ブロック表示にしたいときは `--graphics blocks` を付けます。
 
 ### コマンドで進める方法
 
@@ -345,8 +357,9 @@ VMware を使わない場合は、次の方法があります。
    - オフにすると、セットアップは約 35 分で終わりました（オンのときは数時間たっても終わりませんでした）。
 2. **VM の省電力スロットリングは自動で外します:** Windows 11 は、窓を出していない処理の CPU 速度とタイマー精度を省電力のために絞ります。これで VM の時計が何時間も遅れ、インストール中に固まりました。terminal-windows は、VM のプロセスだけこの制限を外します（Windows の設定は変えません）。CPU は 4 コアが標準で、`--cpus N` で変えられます（2 コアにすると、起動の途中で止まりました）。
    - VM が固まって作り直したいときは、`terminal-windows delete default --yes` で削除できます（ディスクとスナップショットも消えます）。
-3. **VM の中を軽くする:** `terminal-windows tune default --yes` を実行します（視覚効果、検索インデックス、SysMain などをオフ）。
-4. **解像度を下げる:** `--width 1280 --height 800` のように指定します。
+3. **VM の中を軽くする:** `terminal-windows tune default --yes` を実行します（視覚効果、検索インデックス、SysMain、Edge の常駐、ストアの自動更新、テレメトリのタスクをオフ。休止ファイルと予約済み記憶域をなくし、古い更新ファイルを消して TRIM。Windows Update は続けますが、勝手に再起動しません）。セットアップの案内では自動で実行します。
+4. **使っていない VM を休ませる:** MCP サーバーが自分で起動した VM は、ツールが 15 分呼ばれないと状態を保存して止まり、PC のメモリを返します（VM の中で AI などが動いていて CPU を使っているときは止めません）。次の操作で自動的に再開します。時間は環境変数 `TERMINAL_WINDOWS_IDLE_MINUTES` で変えられます（`0` で無効）。自分で起動した VM は止めません。
+5. **解像度を下げる:** `--width 1280 --height 800` のように指定します。
 
 ---
 

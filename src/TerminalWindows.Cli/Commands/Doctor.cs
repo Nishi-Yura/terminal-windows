@@ -61,7 +61,10 @@ public static class Doctor
         var vbox = new VirtualBoxBackend();
         var info = await vbox.ProbeAsync();
         if (!info.Installed)
-            checks.Add(new("virtualbox", "error", "VirtualBox is not installed. Install Oracle VirtualBox 7.1+ from https://www.virtualbox.org/ (base package only; the Extension Pack is not needed). terminal-windows does not install it for you."));
+            checks.Add(VmwareBackend.IsInstalled()
+                ? new("virtualbox", "ok", "VirtualBox not installed (not needed: VMware Workstation is used)")
+                : new("virtualbox", "error", "VirtualBox is not installed. 'terminal-windows setup' installs it with winget when you agree " +
+                                             "(or install Oracle VirtualBox 7.1+ from https://www.virtualbox.org/; the Extension Pack is not needed)."));
         else if (info.Problem is not null)
             checks.Add(new("virtualbox", "error", $"{info.Problem} ({info.Path}). Update to 7.1 or newer."));
         else
@@ -123,7 +126,7 @@ public static class Doctor
         var gfx = TerminalCaps.Detect();
         checks.Add(new("terminal", gfx.Protocol == GraphicsProtocol.None ? "warn" : "ok",
             gfx.Protocol == GraphicsProtocol.None
-                ? $"{gfx.TerminalName}: no inline graphics detected. 'view' will fall back to the VirtualBox window (Windows Terminal 1.22+ or WezTerm recommended)."
+                ? $"{gfx.TerminalName}: no inline graphics detected. 'view' opens the screen in its own window (inside the terminal needs Windows Terminal 1.22+ or WezTerm)."
                 : $"{gfx.TerminalName}: {gfx.Protocol}"));
 
         if (json)

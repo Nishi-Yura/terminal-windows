@@ -7,13 +7,15 @@ public enum GraphicsProtocol
     Kitty,
     /// <summary>Truecolor half-block characters: works in any terminal with 24-bit colour.</summary>
     Blocks,
+    /// <summary>A window of its own (NativeViewer), not inside the terminal.</summary>
+    Window,
 }
 
 public sealed record TerminalCaps(string TerminalName, GraphicsProtocol Protocol)
 {
     /// <summary>
-    /// Priority: kitty graphics (WezTerm) -> Sixel (Windows Terminal 1.22+, WezTerm) -> none (VirtualBox window).
-    /// TERMINAL_WINDOWS_GRAPHICS=kitty|sixel|none overrides detection.
+    /// Priority: kitty graphics (WezTerm) -> Sixel (Windows Terminal 1.22+, WezTerm) -> none (the viewer opens its own window).
+    /// TERMINAL_WINDOWS_GRAPHICS=kitty|sixel|blocks|window overrides detection.
     /// </summary>
     public static TerminalCaps Detect(string? overrideProtocol = null)
     {
@@ -31,6 +33,7 @@ public sealed record TerminalCaps(string TerminalName, GraphicsProtocol Protocol
                 "kitty" => GraphicsProtocol.Kitty,
                 "sixel" => GraphicsProtocol.Sixel,
                 "blocks" => GraphicsProtocol.Blocks,
+                "window" => GraphicsProtocol.Window,
                 _ => GraphicsProtocol.None,
             });
         }

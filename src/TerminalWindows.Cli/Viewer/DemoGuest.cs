@@ -36,11 +36,12 @@ public sealed class DemoGuest : IAsyncDisposable
         var protocol = a.Opt("graphics");
         a.RejectUnknown();
         var caps = TerminalCaps.Detect(protocol);
-        if (caps.Protocol == GraphicsProtocol.None)
-            throw new CliException($"{caps.TerminalName}: no inline graphics detected. Run this in Windows Terminal 1.22+ or WezTerm (or force with --graphics sixel|kitty).");
         await using var demo = new DemoGuest();
         demo.Start();
-        await new TerminalViewer(demo.Machine, caps).RunAsync();
+        if (caps.Protocol is GraphicsProtocol.None or GraphicsProtocol.Window || Console.IsOutputRedirected)
+            await new NativeViewer(demo.Machine).RunAsync();
+        else
+            await new TerminalViewer(demo.Machine, caps).RunAsync();
         Console.WriteLine("Demo viewer closed. Received input:");
         foreach (var e in demo._events) Console.WriteLine("  " + e);
         return 0;

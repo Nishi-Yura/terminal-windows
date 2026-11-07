@@ -67,7 +67,7 @@ public static class Lifecycle
         var iso = a.Opt("iso");
         bool noView = a.Flag("no-view"), detach = a.Flag("detach"), plan = a.Flag("plan");
         var opts = ReadCreateOptions(a, name, iso);
-        var protocol = a.Opt("graphics");
+        var protocol = a.Flag("window") ? "window" : a.Opt("graphics");
         a.RejectUnknown();
         var mgr = new MachineManager();
 
@@ -165,7 +165,7 @@ public static class Lifecycle
     public static async Task<int> ViewAsync(ParsedArgs a)
     {
         var m = MachineStore.Load(a.Machine());
-        var protocol = a.Opt("graphics");
+        var protocol = a.Flag("window") ? "window" : a.Opt("graphics");
         a.RejectUnknown();
         var mgr = new MachineManager();
         await mgr.EnsureRunningAsync(m);
@@ -175,20 +175,32 @@ public static class Lifecycle
     private static async Task<int> ViewMachineAsync(MachineManager mgr, MachineConfig m, string? protocol)
     {
         var caps = TerminalCaps.Detect(protocol);
-        // Always inside the terminal (the hypervisor's own window opens only with 'terminal-windows show').
-        // Terminals without Sixel/kitty graphics get the truecolor block mode.
-        if (Console.IsInputRedirected || Console.IsOutputRedirected)
-            throw new CliException($"'view' needs an interactive terminal. To open the hypervisor's own window instead, run: terminal-windows show {m.Name}");
-        var viewer = new TerminalViewer(m, caps);
-        await viewer.RunAsync();
-        LastViewerExit = viewer.Exit;
-        if (viewer.Exit == ViewerExit.StopVm)
+        ViewerExit exit;
+        // Terminals without Sixel/kitty graphics, or no console at all: a window of our own at full
+        // resolution (--graphics blocks keeps the character-block mode inside the terminal).
+        if (caps.Protocol == GraphicsProtocol.Window || caps.Protocol == GraphicsProtocol.None
+            || Console.IsInputRedirected || Console.IsOutputRedirected)
+        {
+            Console.WriteLine(Ui.T("VM の画面を別の窓で開きました。窓を閉じると戻ります（Windows キーなどは窓左上のアイコンのメニューから）。",
+                                   "Opened the VM screen in its own window. Close it to come back (Windows key etc.: the menu under the window's icon)."));
+            var nv = new NativeViewer(m);
+            await nv.RunAsync();
+            exit = nv.Exit;
+        }
+        else
+        {
+            var viewer = new TerminalViewer(m, caps);
+            await viewer.RunAsync();
+            exit = viewer.Exit;
+        }
+        LastViewerExit = exit;
+        if (exit == ViewerExit.StopVm)
         {
             await mgr.StopAsync(m, "savestate", false);
             Console.WriteLine(Ui.T($"{m.Name} を止めました（状態は保存済み。次回そのまま再開します）。", $"{m.Name} stopped (state saved; it resumes as it was)."));
             return 0;
         }
-        if (viewer.Exit == ViewerExit.Quit)
+        if (exit != ViewerExit.StopVm)
             Console.WriteLine(Ui.T($"画面を閉じました。{m.Name} は動き続けています。", $"Viewer closed. {m.Name} keeps running (stop it with 'terminal-windows stop')."));
         return 0;
     }

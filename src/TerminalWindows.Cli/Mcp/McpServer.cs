@@ -16,6 +16,9 @@ public sealed class McpServer
     private GuestClient? _client;
     private ScreenSpace? _space;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    /// <summary>This server started the VM (it was stopped/saved), so it may also put it back to rest.</summary>
+    private bool _startedByUs;
+    private DateTime _lastCall = DateTime.UtcNow;
 
     public McpServer(string machineName, bool syncOutbox = false)
     {
@@ -30,11 +33,13 @@ public sealed class McpServer
         "Coordinates are pixels of the latest screenshot image. Prefer the element tools (click_element, set_text, wait_for, read_text) " +
         "over pixel clicks when the control has a name; use run_powershell for files and settings. " +
         "A stopped VM starts automatically on the first action. Take a snapshot before destructive changes. Put deliverables in Desktop\\Outbox and call export_file. " +
-        "If status reports a lock/logon screen, stop and tell the user. Record progress with append_notes.";
+        "If status reports a lock/logon screen, stop and tell the user. Record progress with append_notes. " +
+        "A VM this server started is saved after a while without tool calls (frees this PC's memory) and resumes on the next action.";
 
     public async Task RunAsync()
     {
         if (_syncOutbox) _ = Task.Run(() => Commands.Transfer.SyncOutboxLoopAsync(MachineStore.Load(_machineName), CancellationToken.None));
+        if (IdleMinutes() > 0) _ = Task.Run(IdleLoopAsync);
         await McpStdio.RunAsync(Console.OpenStandardInput(), Console.OpenStandardOutput(), "terminal-windows", Instructions,
             McpTools.Definitions, (name, args) => CallToolAsync(name, args));
     }
@@ -48,7 +53,10 @@ public sealed class McpServer
         var m = MachineStore.Load(_machineName);
         // A stopped / saved / paused VM is started on the first action (takes ~10-60 s); progress goes to stderr.
         if (await _manager.Backend.GetStateAsync(m.VmName) != VmState.Running)
+        {
             await _manager.EnsureRunningAsync(m);
+            _startedByUs = true;
+        }
         _client = await GuestClient.ConnectAsync(m);
         _client.Rpc.Disconnected += _ => _client = null;
         return _client;
@@ -76,6 +84,7 @@ public sealed class McpServer
         await _gate.WaitAsync();
         try
         {
+            _lastCall = DateTime.UtcNow;
             return await DispatchAsync(name, args);
         }
         catch (Exception ex) when (ex is RpcException or CliException or ArgumentException or InvalidOperationException or IOException or TimeoutException or FormatException)
@@ -85,7 +94,58 @@ public sealed class McpServer
         }
         finally
         {
+            _lastCall = DateTime.UtcNow;
             _gate.Release();
+        }
+    }
+
+    /// <summary>TERMINAL_WINDOWS_IDLE_MINUTES (default 15; 0 = never).</summary>
+    internal static int IdleMinutes() =>
+        int.TryParse(Environment.GetEnvironmentVariable("TERMINAL_WINDOWS_IDLE_MINUTES"), out var v) ? Math.Max(0, v) : 15;
+
+    /// <summary>
+    /// A VM that this server started is saved (state kept, RAM given back to this PC) after IdleMinutes
+    /// without tool calls, unless something in it is still busy (an AI working inside the VM, an install).
+    /// A VM the person started themselves is never touched.
+    /// </summary>
+    private async Task IdleLoopAsync()
+    {
+        var idle = TimeSpan.FromMinutes(IdleMinutes());
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromMinutes(1));
+            if (!_startedByUs || DateTime.UtcNow - _lastCall < idle) continue;
+            if (!await _gate.WaitAsync(0)) continue;
+            try
+            {
+                if (!_startedByUs || DateTime.UtcNow - _lastCall < idle) continue;
+                var m = MachineStore.Load(_machineName);
+                if (await _manager.Backend.GetStateAsync(m.VmName) != VmState.Running) { _startedByUs = false; continue; }
+                if (_client is { } c)
+                {
+                    var r = await c.CallAsync("exec", new JsonObject
+                    {
+                        ["script"] = "(Get-CimInstance Win32_Processor | Measure-Object LoadPercentage -Average).Average",
+                        ["timeout_s"] = 30,
+                    }, TimeSpan.FromSeconds(45));
+                    if (double.TryParse((r["stdout"]?.GetValue<string>() ?? "").Trim(), System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out var load) && load > 20)
+                    {
+                        _lastCall = DateTime.UtcNow; // busy inside: look again after another idle period
+                        continue;
+                    }
+                }
+                Console.Error.WriteLine($"terminal-windows: no tool calls for {idle.TotalMinutes:0} min; saving {m.Name} (it resumes on the next action).");
+                await ResetClientAsync();
+                await _manager.StopAsync(m, "savestate", false);
+                _startedByUs = false;
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("terminal-windows: idle save skipped: " + ex.Message);
+                _lastCall = DateTime.UtcNow;
+            }
+            finally { _gate.Release(); }
         }
     }
 

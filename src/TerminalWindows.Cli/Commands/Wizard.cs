@@ -122,8 +122,9 @@ public static class Wizard
         }
         if (state["snapshot"]?.GetValue<bool>() != true)
         {
-            Step(T("今の状態を保存します（スナップショット agent-ready）", "Saving this state (snapshot agent-ready)"));
-            await SnapshotCommands.SnapshotAsync(Args(Name, "--name", "agent-ready"));
+            // Powered off: no RAM copy in the snapshot (several GB less), and the restart applies tune's settings.
+            Step(T("VM を再起動して、今の状態を保存します（スナップショット agent-ready）", "Restarting the VM and saving this state (snapshot agent-ready)"));
+            await new MachineManager(log: s => Console.WriteLine("  " + s)).SnapshotPoweredOffAsync(MachineStore.Load(Name), "agent-ready", "terminal-windows: AI installed and tuned");
             state["snapshot"] = true; SaveState(state);
         }
         if (state["connected"] is null)
@@ -196,7 +197,9 @@ public static class Wizard
             if (agent is not null and not "none")
                 items.Add((T($"{agent} を開く（VM のデスクトップの窓で。画面ごと見えます）", $"Open {agent} in a window on the VM's desktop, shown here"),
                     () => RunAgentWindowAsync(name, agent)));
-            items.Add((T("画面を見る・操作する", "Watch and use the screen"), () => Lifecycle.ViewAsync(Args(name))));
+            items.Add((T("画面を見る・操作する（このターミナルの中で）", "Watch and use the screen (in this terminal)"), () => Lifecycle.ViewAsync(Args(name))));
+            items.Add((T("画面を別の窓で開く（大きく・くっきり。窓の大きさは自由）", "Open the screen in its own window (full resolution, resizable)"),
+                () => Lifecycle.ViewAsync(Args(name, "--window"))));
             items.Add((T("VM の中のターミナル（PowerShell、文字だけ）", "A terminal inside the VM (PowerShell, text only)"),
                 async () => { await Lifecycle.StartAsync(Args(name)); return await Agent.TermAsync(Args(name)); }));
             items.Add((T("AI の成果物（Outbox）を この PC に取り込む", "Fetch the AI's results (Outbox) to this PC"), () => FetchOutboxAsync(m)));
@@ -401,21 +404,65 @@ public static class Wizard
             foreach (var w in HostMode.ConflictsForWizard()) Console.WriteLine("  ! " + w);
             Console.Write(T("  番号 [1]: ", "  Number [1]: "));
             if ((Console.ReadLine() ?? "").Trim() == "2")
-            {
-                Console.WriteLine(T(
-                    "  Broadcom のサポートポータルを開きます。サインイン（またはアカウント登録）して「VMware Workstation Pro」の Windows 版をダウンロードし、\n" +
-                    "  インストールしてください（個人利用を選びます）。終わったら terminal-windows.exe をもう一度開くと続きから進みます。",
-                    "  Opening Broadcom's support portal. Sign in (or register), download VMware Workstation Pro for Windows and install it\n" +
-                    "  (choose personal use). Then open terminal-windows.exe again to continue."));
-                Process.Start(new ProcessStartInfo("https://support.broadcom.com/") { UseShellExecute = true });
-                return null;
-            }
+                return await InstallVmwareAsync() ? Backends.Vmware : null;
             if (!await EnsureVirtualBoxAsync()) return null;
             if (!await EnsureFastHostAsync()) return null;
             return Backends.VirtualBox;
         }
         if (!await EnsureVirtualBoxAsync()) return null;
         return Backends.VirtualBox;
+    }
+
+    /// <summary>
+    /// VMware Workstation Pro: Broadcom only offers it after sign-in, so the user downloads it; the wizard
+    /// waits for the installer in Downloads, starts it (the user goes through its screens and licence),
+    /// and continues as soon as VMware is installed, without reopening anything.
+    /// </summary>
+    private static async Task<bool> InstallVmwareAsync()
+    {
+        Console.WriteLine(T(
+            "  Broadcom のサポートポータルを開きます。サインイン（またはアカウント登録）して「VMware Workstation Pro」の\n" +
+            "  Windows 版をダウンロードしてください（個人利用は無料）。ダウンロードが終わると、インストーラーを自動で開きます。\n" +
+            "  やめるときは Enter。",
+            "  Opening Broadcom's support portal. Sign in (or register) and download VMware Workstation Pro for Windows\n" +
+            "  (free for personal use). The installer opens by itself when the download finishes. Press Enter to stop."));
+        Process.Start(new ProcessStartInfo("https://support.broadcom.com/") { UseShellExecute = true });
+        var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        IEnumerable<string> Installers() => Directory.Exists(downloads)
+            ? Directory.EnumerateFiles(downloads, "VMware-workstation*.exe").OrderByDescending(File.GetLastWriteTimeUtc)
+            : Enumerable.Empty<string>();
+        var typed = Task.Run(() => Console.ReadLine());
+        string? installer = Installers().FirstOrDefault();
+        while (installer is null || !await IsCompleteAsync(installer, 100_000_000))
+        {
+            if (VmwareBackend.IsInstalled()) return true; // installed some other way meanwhile
+            if (typed.IsCompleted)
+            {
+                Console.WriteLine(T("  VMware を入れたら terminal-windows.exe をもう一度開くと続きから進みます。",
+                                    "  After installing VMware, open terminal-windows.exe again to continue."));
+                return false;
+            }
+            await Task.Delay(3000);
+            installer = Installers().FirstOrDefault();
+        }
+        Console.WriteLine("  -> " + installer);
+        Console.WriteLine(T("  インストーラーを開きます（管理者の確認画面が出ます）。画面に沿って進めてください。",
+                            "  Starting the installer (Windows asks for admin approval). Follow its screens."));
+        try
+        {
+            using var p = Process.Start(new ProcessStartInfo(installer) { UseShellExecute = true })!;
+            await p.WaitForExitAsync();
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            Console.WriteLine(T("  管理者の確認がキャンセルされました。", "  Admin approval was cancelled."));
+            return false;
+        }
+        for (int i = 0; i < 20 && !VmwareBackend.IsInstalled(); i++) await Task.Delay(1000);
+        if (VmwareBackend.IsInstalled()) { Console.WriteLine(T("  VMware Workstation OK", "  VMware Workstation OK")); return true; }
+        Console.WriteLine(T("  VMware Workstation が見つかりません。インストールが終わったら、もう一度開いてください（再起動を求められたら再起動してから）。",
+                            "  VMware Workstation not found. When it is installed (restart first if it asked), open this again."));
+        return false;
     }
 
     private static async Task<bool> EnsureVirtualBoxAsync()
@@ -458,7 +505,11 @@ public static class Wizard
         Console.WriteLine(T("  元に戻すときは、管理者のターミナルで `terminal-windows host-mode secure --yes` を実行して再起動します。",
                             "  To undo later: `terminal-windows host-mode secure --yes` in an admin terminal, then restart."));
         if (!Ask(T("オフにしますか？（管理者の確認画面のあと、再起動が必要です）", "Turn it off? (admin approval, then a restart)"), true))
+        {
+            Console.WriteLine(T("  オンのままにしました。オンのまま使うには、もう一度開いて 2（VMware Workstation Pro）を選んでください。",
+                                "  Left it on. To use the VM with it on, open this again and choose 2 (VMware Workstation Pro)."));
             return false;
+        }
 
         var exe = Environment.ProcessPath!;
         var installed = Path.Combine(InstallDir, "terminal-windows.exe");
@@ -545,11 +596,16 @@ public static class Wizard
             .OrderByDescending(File.GetLastWriteTimeUtc);
     }
 
-    private static async Task<bool> IsCompleteAsync(string path)
+    /// <summary>The download is finished: big enough and no longer growing (browsers write to a temp name first).</summary>
+    private static async Task<bool> IsCompleteAsync(string path, long minBytes = 1_000_000_000)
     {
-        long a = new FileInfo(path).Length;
-        await Task.Delay(2000);
-        return a > 1_000_000_000 && a == new FileInfo(path).Length;
+        try
+        {
+            long a = new FileInfo(path).Length;
+            await Task.Delay(2000);
+            return a > minBytes && a == new FileInfo(path).Length;
+        }
+        catch (IOException) { return false; }
     }
 
     private static bool IsWindowsIso(string path)

@@ -334,23 +334,11 @@ public sealed class MachineManager
         await Task.Delay(3000);
         // Snapshot a powered-off VM: a live snapshot would also write the guest's RAM (several GB) to disk.
         // Restoring clean-setup then cold-boots, and auto-logon brings the helper back.
-        _log("Shutting the guest down for the clean snapshot...");
-        try
+        await SnapshotPoweredOffAsync(m, CleanSetupSnapshot, "terminal-windows: unattended setup finished", () =>
         {
-            await _backend.ShutdownAsync(m.VmName, TimeSpan.FromMinutes(5));
-        }
-        catch (CliException)
-        {
-            _log("  ACPI shutdown timed out; powering off.");
-            await _backend.PowerOffAsync(m.VmName);
-            await WaitForStateAsync(m, s => s is VmState.PoweredOff or VmState.Aborted, TimeSpan.FromMinutes(1));
-        }
-        _log($"Taking snapshot '{CleanSetupSnapshot}'...");
-        await _backend.TakeSnapshotAsync(m.VmName, CleanSetupSnapshot, "terminal-windows: unattended setup finished");
-        m.SetupComplete = true;
-        MachineStore.Save(m);
-        await _backend.StartAsync(m.VmName);
-        await WaitForHelperAsync(m, TimeSpan.FromMinutes(10));
+            m.SetupComplete = true;
+            MachineStore.Save(m);
+        });
         _log("Setup complete.");
     }
 
@@ -488,6 +476,33 @@ public sealed class MachineManager
             await _backend.DeleteSnapshotAsync(m.VmName, old);
             _log($"Deleted old snapshot '{old}'.");
         }
+    }
+
+    /// <summary>
+    /// Shuts the guest down, takes the snapshot and starts it again. Unlike a live snapshot it stores no
+    /// copy of the guest's RAM (6-8 GB less on the disk), and the restart applies settings that need one.
+    /// </summary>
+    public async Task SnapshotPoweredOffAsync(MachineConfig m, string label, string description, Action? beforeStart = null)
+    {
+        _log("Shutting the guest down for the snapshot (no copy of its memory is stored)...");
+        if (await _backend.GetStateAsync(m.VmName) is VmState.Running or VmState.Paused)
+        {
+            try
+            {
+                await _backend.ShutdownAsync(m.VmName, TimeSpan.FromMinutes(5));
+            }
+            catch (CliException)
+            {
+                _log("  ACPI shutdown timed out; powering off.");
+                await _backend.PowerOffAsync(m.VmName);
+                await WaitForStateAsync(m, s => s is VmState.PoweredOff or VmState.Aborted, TimeSpan.FromMinutes(1));
+            }
+        }
+        _log($"Taking snapshot '{label}'...");
+        await _backend.TakeSnapshotAsync(m.VmName, label, description);
+        beforeStart?.Invoke();
+        await _backend.StartAsync(m.VmName);
+        await WaitForHelperAsync(m, TimeSpan.FromMinutes(10));
     }
 
     public async Task<string> SnapshotAsync(MachineConfig m, string? label)
