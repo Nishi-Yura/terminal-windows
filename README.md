@@ -53,7 +53,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 **0.1.0（開発中）**
 
 - Windows 11 Home（VMware Workstation 17.6）で、ISO からの完全自動セットアップ（AI の導入まで含めて約 15 分）、画面表示と操作、MCP、スナップショット、VM の中の AI（Claude Code / Codex CLI / Gemini CLI）を確認しています。VirtualBox は、Windows のハイパーバイザーを切った状態で確認しています。
-- ビルド済みの配布物（Release）はありません。[1 行インストール](#いちばん簡単な方法-powershell-に-1-行)が、ソースから自動でビルドします。
+- [1 行インストール](#いちばん簡単な方法-powershell-に-1-行)は、GitHub の Release があればそのビルド済みの exe を、なければソースから自動でビルドして入れます。
 
 ---
 
@@ -80,7 +80,24 @@ PowerShell を開いて、次の 1 行を貼り付けます（管理者権限は
 irm https://raw.githubusercontent.com/Nishi-Yura/terminal-windows/main/get.ps1 | iex
 ```
 
-ビルドに必要な .NET SDK がなければ Microsoft の公式スクリプトで `%USERPROFILE%\.terminal-windows\sdk` に入れ、このリポジトリのソースを取ってきてビルドし、インストールして、下のセットアップを始めます。同じ 1 行をもう一度実行すると最新版に更新されます。
+- **Release があるとき:** ビルド済みの `terminal-windows.exe` をダウンロードし、一緒に公開している SHA-256 と照合してから入れます（一致しなければ何も入れずに止まります）。数秒で終わります。
+- **Release がないとき**（または `-FromSource` を付けたとき）: ビルドに必要な .NET SDK がなければ Microsoft の公式スクリプトで `%USERPROFILE%\.terminal-windows\sdk` に入れ、このリポジトリのソースを取ってきてビルドします。
+
+どちらも `%USERPROFILE%\.terminal-windows\bin` に入れて PATH に追加し、下のセットアップを始めます。同じ 1 行をもう一度実行すると最新版に更新されます。
+
+### Windows の警告が出たとき
+
+exe には署名（有料の証明書）を付けていません。そのため、Release のページから exe を手でダウンロードして開くと、Windows が「Windows によって PC が保護されました」と表示することがあります。
+
+1. まず、ダウンロードした exe が本物か確かめます。PowerShell で次を実行し、表示された値が Release の `terminal-windows.exe.sha256` の中身と同じなら本物です。
+
+   ```powershell
+   (Get-FileHash .\terminal-windows.exe -Algorithm SHA256).Hash
+   ```
+
+2. 同じなら、警告の画面で「詳細情報」→「実行」を押します。
+
+上の 1 行インストールは、照合までを自動で行うので、この警告は通常出ません。ウイルス対策ソフトが誤って止めた場合は、照合で本物と確かめたうえで、そのソフトの「誤検出の報告」から知らせてください（VM の画面操作や自動入力をするので、まれに誤って検出されることがあります）。
 
 ### exe をダブルクリック
 

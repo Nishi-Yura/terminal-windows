@@ -15,3 +15,7 @@ docs/
 terminal-windows-SPEC.md
 TerminalWindows.slnx
 .github/workflows/
+
+# Maintainer-only release tooling and its output
+release.ps1
+release/
