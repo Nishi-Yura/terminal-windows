@@ -1,6 +1,5 @@
 # terminal-windows
 
-[![CI](https://github.com/Nishi-Yura/terminal-windows/actions/workflows/ci.yml/badge.svg)](https://github.com/Nishi-Yura/terminal-windows/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Sponsor](https://img.shields.io/static/v1?label=Sponsor&message=%E2%9D%A4&logo=GitHub&color=%23fe8e86)](https://github.com/sponsors/Nishi-Yura)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-ffdd00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/nishiyura)
@@ -30,7 +29,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 - [速くしたいとき](#速くしたいとき)
 - [注意してほしいこと](#注意してほしいこと)
 - [セキュリティと隔離](#セキュリティと隔離)
-- [開発者向け](#開発者向け)
+- [そのほか](#そのほか)
 - [応援する](#応援する)
 
 ---
@@ -47,23 +46,14 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 | **ファイルは安全に受け渡し** | 共有フォルダは使わず、Inbox / Outbox を通してコピーします（SHA-256 で照合し、上書きはしません）。 |
 | **VM の中で AI を動かせる** | Claude Code / Codex CLI / Gemini CLI のうち選んだものを VM の中に入れ、ホストのターミナルから使えます（`terminal-windows claude` / `codex` / `gemini`）。 |
 
-
 ---
 
 ## 今の状態
 
 **0.1.0（開発中）**
 
-- 自動テストは **195 件すべて合格**しています（GitHub Actions で毎回実行）。
-- 実機で確認済みのこと（Windows 11 Home、VMware Workstation 17.6、ハイパーバイザー有効）:
-  - ISO からの完全自動セットアップ（約 12 分）、`selftest` 19 項目
-  - ターミナルと専用の窓での画面表示と操作、MCP、スナップショット
-  - VM の中の AI（VM のデスクトップの窓で表示。Claude Code で確認）
-  - **まっさらな Windows 11 での通しテスト:** 1 行インストール（106 秒。.NET SDK の導入からビルド、インストールまで）、VirtualBox の自動インストール（25 秒）、セットアップの案内
-- VirtualBox は、Windows のハイパーバイザーを切った状態で動作を確認しています。
-- まだのこと: 実際の新しい PC で VM の作成まで通すこと、VMware のインストーラーの自動起動、Codex / Gemini の VM の中での実機確認。
-
-詳しくは [docs/VALIDATION.md](docs/VALIDATION.md) にまとめています。ビルド済みの配布物（Release）はありません。[1 行インストール](#いちばん簡単な方法-powershell-に-1-行)が、ソースから自動でビルドします。
+- Windows 11 Home（VMware Workstation 17.6）で、ISO からの完全自動セットアップ、画面表示と操作、MCP、スナップショット、VM の中の AI を確認しています。VirtualBox は、Windows のハイパーバイザーを切った状態で確認しています。
+- ビルド済みの配布物（Release）はありません。[1 行インストール](#いちばん簡単な方法-powershell-に-1-行)が、ソースから自動でビルドします。
 
 ---
 
@@ -72,7 +62,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 | 項目 | 要件 |
 |---|---|
 | ホスト OS | Windows 11 Home 以上 |
-| 仮想化ソフト | [Oracle VirtualBox](https://www.virtualbox.org/) 7.1 以上。本体だけで動きます（Extension Pack は不要） |
+| 仮想化ソフト | [VMware Workstation Pro](https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion)（個人利用は無料）か [Oracle VirtualBox](https://www.virtualbox.org/) 7.1 以上（Extension Pack は不要）。セットアップの案内がどちらにするか聞きます |
 | スペックの目安 | メモリ 16GB 以上、空きディスク 64GB 以上、BIOS で VT-x / AMD-V を有効にしておく |
 | Windows 11 の ISO | [Microsoft 公式ページ](https://www.microsoft.com/ja-jp/software-download/windows11)から入手します（約 8.3GiB）。**ゲストの Windows のライセンスは利用者の責任です。** |
 | ターミナル | Windows Terminal 1.22 以上か WezTerm（どちらもないときは色付きの文字で表示します） |
@@ -94,12 +84,14 @@ irm https://raw.githubusercontent.com/Nishi-Yura/terminal-windows/main/get.ps1 |
 
 ### exe をダブルクリック
 
-`terminal-windows.exe` は 1 つの exe で完結しています（VM 内のヘルパーも中に入っています）。ダブルクリックすると、セットアップの案内が始まります。質問に Enter（はい）で答えていくだけで、最後まで進みます。
+`terminal-windows.exe` は 1 つの exe で完結しています（VM 内のヘルパーも中に入っています）。ダブルクリックすると、セットアップの案内が始まります。質問に答えていくだけで、最後まで進みます。
 
-1. VirtualBox が入っていなければ、winget で入れます（管理者の確認画面が出ます）。
-2. Windows のハイパーバイザー（メモリ整合性・VBS・WSL2 など）が動いていると、VM がとても遅く、固まることがあります。その場合はオフにするか聞きます。「はい」を選ぶと、管理者の確認画面が出たあと再起動します。サインインすると、続きから自動で再開します。オフの間は WSL2 / Docker が使えません。元に戻すときは `terminal-windows host-mode secure --yes` を実行します。
+1. 仮想化ソフトを決めます。VMware Workstation が入っていればそれを使います。
+   - Windows のハイパーバイザー（メモリ整合性・VBS・WSL2 など）が動いている PC では、VirtualBox はとても遅く、固まることがあります。その場合は「ハイパーバイザーをオフにして VirtualBox を使う」か「VMware Workstation Pro を入れる」かを選びます。新しい PC は、たいていハイパーバイザーがオンです。
+   - VirtualBox は winget で入れます（管理者の確認画面が出ます）。ハイパーバイザーをオフにするときは再起動が必要で、サインインすると続きから自動で再開します。元に戻すときは `terminal-windows host-mode secure --yes` を実行します。
+   - VMware は Broadcom のサイトからダウンロードします（アカウント登録が必要）。ダウンロードが終わると、インストーラーを自動で開きます。
 3. ダウンロードフォルダーかデスクトップにある Windows 11 の ISO を使います。見つからなければ Microsoft の公式ページを開き、ダウンロードが終わると自動で次に進みます。
-4. VM の中で使う AI（Claude Code / Codex CLI / Gemini CLI、または入れない）を選びます。VM の作成（30〜60 分）、AI の導入、軽量化、スナップショット作成まで自動で進みます。
+4. VM の中で使う AI（Claude Code / Codex CLI / Gemini CLI、または入れない）を選びます。VM の作成（VMware で約 15 分、VirtualBox で約 40 分）、AI の導入、軽量化、HiDPI 表示、スナップショット作成まで自動で進みます。
 5. 最後に AI が開くので、サインインします。次からは exe を開くだけで、VM の中の AI につながります。
 
 何をするかだけを確認したいときは、`terminal-windows setup --dry-run` を実行します。何も入れず、何も変えずに、確認結果だけを表示します。
@@ -133,6 +125,7 @@ irm https://raw.githubusercontent.com/Nishi-Yura/terminal-windows/main/get.ps1 |
 - `terminal-windows codex --window`（`claude` / `gemini` も同じ）で、AI の窓を直接開くこともできます。
 - マシンが `default` だけのときは、コマンドのマシン名を省略できます（`terminal-windows view`、`terminal-windows push file.txt` など）。
 - 画面はターミナルの中に表示します。画像表示（Sixel / kitty）に対応していないターミナルでは、色付きの文字で表示します（解像度は低めです）。
+- **画質について:** 新しい VM は **HiDPI（2 倍）表示**です。画面の作り（1280x720）はそのままで、実際のピクセルは 2 倍（2560x1440、拡大率 200%）なので、ビューアで縮めても文字がくっきりします。`terminal-windows display NAME --hidpi` / `--standard` でいつでも切り替えられます（再起動は不要。開いていたアプリは開き直すとくっきりします）。
   - Windows Terminal は Sixel の画像を「1 文字 = 横 10 × 縦 20 ピクセル」として扱うので、表示の大きさは窓の大きさ（文字数）で決まります。小さい窓では上の行に「縮小 79%」のように出ます。**窓を最大化するか、Ctrl+- で文字を小さくすると**大きく映ります。
   - 標準表示のときは、F12 のメニューの 5 で VM の解像度をこの枠に合わせることもできます（VMware の画面ドライバーにある大きさの中で、今よりくっきりするときだけ変えます。6 で元に戻ります）。
 - ターミナルの外に窓を開きたいときは `terminal-windows view --window` で専用の窓（元の解像度、マウスと日本語入力もそのまま）が開きます。
@@ -157,7 +150,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Skill
 terminal-windows doctor
 ```
 
-**3. VM を作る**（1〜2 時間ほどかかります。**ご自身で開いたターミナルで**実行し、その間は PC をスリープさせないでください）
+**3. VM を作る**（15〜40 分ほどかかります。**ご自身で開いたターミナルで**実行し、その間は PC をスリープさせないでください）
 
 ```bash
 terminal-windows up --iso C:\Users\you\Downloads\Windows11_Client_x64_ja-jp.iso
@@ -312,7 +305,7 @@ terminal-windows codex default
 | `up [NAME] --iso PATH` | VM がなければ作り、起動して、ビューアを開く |
 | `start` / `stop` NAME | 起動 / 停止。停止は既定で状態保存（`--shutdown` で OS を終了、`--force` で強制的に電源を切る） |
 | `view NAME` | ターミナルで画面を見る |
-| `show` / `hide` NAME | VirtualBox のウィンドウを出す / 消す |
+| `show` / `hide` NAME | 仮想化ソフト（VMware / VirtualBox）のウィンドウを出す / 消す |
 | `status NAME` / `ls` | 状態 / 一覧 |
 | `snapshot NAME --name LABEL` | スナップショットを作る |
 | `restore NAME LABEL` | 巻き戻す（直前の状態は `pre-restore-*` として自動保存） |
@@ -321,10 +314,12 @@ terminal-windows codex default
 | `notes NAME` | 作業ノートを見る |
 | `claude` / `codex` / `gemini` / `term` / `exec` NAME | VM の中で AI / 端末 / PowerShell を動かす |
 | `tune NAME --yes` | VM の中を軽くする |
+| `display NAME --hidpi` / `--standard` | HiDPI（2 倍）表示 / 標準表示 |
+| `delete NAME --yes` | VM を消す（ディスクとスナップショットも消えます） |
 | `selftest NAME` | 実機での動作を確認する |
 | `doctor` | 環境を診断する |
 
-全部の一覧は `terminal-windows --help` で見られます。VM を消すコマンドは、誤って消すのを防ぐため用意していません。
+全部の一覧は `terminal-windows --help` で見られます。
 
 ---
 
@@ -352,15 +347,8 @@ WSL2、Docker Desktop、メモリ整合性などが有効な PC では、Virtual
 
 VMware を使わない場合は、次の方法があります。
 
-1. **ハイパーバイザーをオフにする（効果：大。実質必須）**
-   - 「Windows セキュリティ」→「デバイス セキュリティ」→「コア分離」で、メモリ整合性をオフにします。
-   - 管理者のターミナルで `bcdedit /set hypervisorlaunchtype off` を実行し、再起動します。
-   - 再起動しても、PowerShell の `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent` が `True` のままなら、VBS（仮想化ベースのセキュリティ）が別の設定で有効になっています。実機では、Windows Hello の PIN 保護（`HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard\Scenarios\WindowsHello` の `Enabled`）と `DeviceGuard` の `EnableVirtualizationBasedSecurity` を 0 にして、ようやく止まりました。
-   - 元に戻すときは、`bcdedit /set hypervisorlaunchtype auto` を実行し、上の値を 1 に戻し、メモリ整合性をオンにして再起動します。
-   - オフの間は、WSL2、Docker、Windows サンドボックスが使えません。ホストのセキュリティも下がるので、ご自身で判断してください。
-   - オフにすると、セットアップは約 35 分で終わりました（オンのときは数時間たっても終わりませんでした）。
-2. **VM の省電力スロットリングは自動で外します:** Windows 11 は、窓を出していない処理の CPU 速度とタイマー精度を省電力のために絞ります。これで VM の時計が何時間も遅れ、インストール中に固まりました。terminal-windows は、VM のプロセスだけこの制限を外します（Windows の設定は変えません）。CPU は 4 コアが標準で、`--cpus N` で変えられます（2 コアにすると、起動の途中で止まりました）。
-   - VM が固まって作り直したいときは、`terminal-windows delete default --yes` で削除できます（ディスクとスナップショットも消えます）。
+1. **ハイパーバイザーをオフにする:** `terminal-windows host-mode` で、なぜオンになっているかを確認できます。管理者のターミナルで `terminal-windows host-mode fast --yes` を実行して再起動するとオフになります（元に戻すときは `host-mode secure --yes`）。オフの間は WSL2、Docker、Windows サンドボックスが使えず、ホストのセキュリティも下がるので、ご自身で判断してください。
+2. **VM の省電力スロットリングは自動で外します:** Windows 11 は、窓を出していない処理の CPU 速度を省電力のために絞り、VM が固まる原因になります。terminal-windows は、VM のプロセスだけこの制限を外します（Windows の設定は変えません）。CPU は 4 コアが標準で、`--cpus N` で変えられます。
 3. **VM の中を軽くする:** `terminal-windows tune default --yes` を実行します（視覚効果、検索インデックス、SysMain、Edge の常駐、ストアの自動更新、テレメトリのタスクをオフ。休止ファイルと予約済み記憶域をなくし、古い更新ファイルを消して TRIM。Windows Update は続けますが、勝手に再起動しません）。セットアップの案内では自動で実行します。
 4. **使っていない VM を休ませる:** MCP サーバーが自分で起動した VM は、ツールが 15 分呼ばれないと状態を保存して止まり、PC のメモリを返します（VM の中で AI などが動いていて CPU を使っているときは止めません）。次の操作で自動的に再開します。時間は環境変数 `TERMINAL_WINDOWS_IDLE_MINUTES` で変えられます（`0` で無効）。自分で起動した VM は止めません。
 5. **解像度を下げる:** `--width 1280 --height 800` のように指定します。
@@ -381,54 +369,26 @@ VMware を使わない場合は、次の方法があります。
 - **ホストとは切り離されています。** ホストのフォルダ、クリップボード、ドラッグ＆ドロップ、オーディオ、USB は VM に接続しません。共有フォルダは `--share PATH` を指定したときだけ使え、既定は読み取り専用です。
 - **VM からはインターネットに出られます。** NAT 経由です。ホストの localhost のサービスには届きませんが、LAN には届く可能性があります。
 - **`--offline` は隔離の保証ではありません。** VM の中のファイアウォールで遮断するだけです。VM の中の AI は管理者権限を持っているので、自分で解除できます。
-- **VM の中の設定（UAC の確認なし昇格、自動ログオン、ロック画面なし）は、使い捨て VM だから許容しているものです。** ホストには絶対に適用しないでください。ゲスト用ヘルパーは、VirtualBox 以外の環境では起動しません（誤実行を防ぐためのもので、セキュリティの保証ではありません）。
+- **VM の中の設定（UAC の確認なし昇格、自動ログオン、ロック画面なし）は、使い捨て VM だから許容しているものです。** ホストには絶対に適用しないでください。ゲスト用ヘルパーは、VirtualBox / VMware の VM の中でしか起動しません（誤実行を防ぐためのもので、セキュリティの保証ではありません）。
 - **通信:** ホストの `127.0.0.1` だけで待ち受け、ランダムなトークンで認証します。トークンと VM のパスワードは、DPAPI で暗号化して保存します。
 - **使い道の制限:** 堅牢なサンドボックスではないため、マルウェアの解析には使わないでください。CAPTCHA、ボット検知、アンチチート、各種サービスの規約を回避する機能はありません。
 
 ---
 
-## 開発者向け
-
-<details>
-<summary>構成・データの保存場所・テスト</summary>
-
-### 構成
-
-```
-src/TerminalWindows.Protocol   共通（通信のフレーム、RPC、トークン認証、キー解析、パス検証、PNG/LZ4、MCP の共通処理）
-src/TerminalWindows.Cli        ホスト CLI（VirtualBox の操作、無人セットアップ、ビューア、MCP サーバー、VM の中の AI）
-src/TerminalWindows.Guest      ゲスト用ヘルパー（画面取得 WGC→DXGI→GDI、SendInput、UI Automation、ConPTY、インストーラー、自己更新）
-tests/TerminalWindows.Tests    自動テスト
-skills/                        この PC の AI 用スキル（プラグインとしても読み込まれる）
-guest-skills/                  VM の中の AI 用スキルと常設ブリーフ（exe に埋め込み、VM に書き込む）
-docs/VALIDATION.md             検証記録
-terminal-windows-SPEC.md       設計の元になった仕様書
-```
+## そのほか
 
 ### データの保存場所
 
 `%USERPROFILE%\.terminal-windows\machines\NAME\`（`TERMINAL_WINDOWS_HOME` で変更できます）に、`machine.json`、VM のディスク、`outbox\` / `inbox\`、`notes.md`、`logs\` が入ります。
 
-`%LOCALAPPDATA%` は使いません。ストア版などパッケージ化されたアプリ（AI のデスクトップアプリなど）から起動されると、Windows が AppData への書き込みを別の場所に振り替えてしまうためです。
+### Claude Code のプラグイン
 
-### テスト
-
-```bash
-dotnet test tests/TerminalWindows.Tests
-```
-
-`TW_VBOX_TESTS=1` を付けると、本物の VirtualBox を使ったテストも実行します。`TW_TEST_ISO=<path>` を付けると、本物の ISO を読むテストも実行します。
-
-### プラグイン
-
-ほかの AI ツールは `connect` で登録します。Claude Code を使う場合は、このリポジトリをプラグインとして入れることもできます（`.claude-plugin/`、`.mcp.json`、`skills/`）。先に `terminal-windows.exe` を 1 回開いて、インストールを済ませておいてください。
+ほかの AI ツールは `connect` で登録します。Claude Code を使う場合は、このリポジトリをプラグインとして入れることもできます。先に `terminal-windows.exe` を 1 回開いて、インストールを済ませておいてください。
 
 ```
 /plugin marketplace add Nishi-Yura/terminal-windows
 /plugin install terminal-windows@terminal-windows
 ```
-
-</details>
 
 ---
 

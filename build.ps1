@@ -7,6 +7,8 @@ $root = $PSScriptRoot
 $dist = Join-Path $root 'dist'
 
 if ($Test) {
+    # The tests are kept in the private working copy only (not published).
+    if (-not (Test-Path (Join-Path $root 'tests\TerminalWindows.Tests'))) { throw 'tests\ is not in this copy' }
     dotnet test (Join-Path $root 'tests\TerminalWindows.Tests') -nologo
     if ($LASTEXITCODE -ne 0) { throw 'tests failed' }
 }

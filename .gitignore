@@ -8,3 +8,10 @@ TestResults/
 *.dmp
 docs/runs/
 artifacts/
+
+# Kept on the maintainer's PC only, not published
+tests/
+docs/
+terminal-windows-SPEC.md
+TerminalWindows.slnx
+.github/workflows/

@@ -5,6 +5,7 @@ using TerminalWindows.Protocol;
 namespace TerminalWindows.Cli.Commands;
 
 /// <summary>
+/// <c>display NAME --hidpi | --standard</c>: a 2x display. HiDPI gives the guest twice the
 /// pixels (2560x1440 for a 1280x720 layout) at 200% scaling, so the viewer shrinks a finely drawn picture and
 /// text stays sharp. Applied live: no restart (apps that were already open may need reopening to be crisp).
 /// </summary>

@@ -144,7 +144,7 @@ public sealed class TerminalViewer
                         _fps = _frames * 1000.0 / _fpsClock.ElapsedMilliseconds;
                         _frames = 0;
                         _fpsClock.Restart();
-                        DrawStatus(Write, null);
+                        RefreshStatus(Write);
                     }
                 }
             }, cts.Token);
@@ -246,7 +246,7 @@ public sealed class TerminalViewer
                             }
                             case TextInput { Text: "4" }:
                                 paletteOpen = true;
-                                DrawStatus(Write, string.Join("  ", Palette.Select((p, i) => $"{PaletteKey(i)}:{p.Label}")) + Ui.T("  （他のキー: 取り消し）", "  (other key: cancel)"));
+                                DrawStatus(Write, string.Join("  ", Palette.Select((p, i) => $"{PaletteKey(i)}:{p.Label}")) + Ui.T("  （他のキー: 取り消し）", "  (other key: cancel)"), menu: true);
                                 break;
                         }
                         continue;
@@ -269,11 +269,11 @@ public sealed class TerminalViewer
                             return;
                         case KeyInput { Chord: "f12" }:
                             barOpen = true;
-                            DrawStatus(Write, CommandBar);
+                            DrawStatus(Write, CommandBar, menu: true);
                             break;
                         case PaletteRequest:
                             paletteOpen = true;
-                            DrawStatus(Write, string.Join("  ", Palette.Select((p, i) => $"{PaletteKey(i)}:{p.Label}")) + "  (other key: cancel)");
+                            DrawStatus(Write, string.Join("  ", Palette.Select((p, i) => $"{PaletteKey(i)}:{p.Label}")) + Ui.T("  （他のキー: 取り消し）", "  (other key: cancel)"), menu: true);
                             break;
                         case TextInput text:
                             await Send(control, "type", new JsonObject { ["text"] = text.Text }, Write);
@@ -426,7 +426,27 @@ public sealed class TerminalViewer
         }
     }
 
-    private void DrawStatus(Action<string> write, string? message)
+    private string? _sticky;          // a menu (until closed) or a notice (a few seconds) on the status line
+    private DateTime _stickyUntil;
+
+    /// <summary>Draws the status line. A message stays: menus until they are closed (<paramref name="menu"/>),
+    /// notices for 6 seconds, so the once-a-second refresh does not wipe them. null shows the normal line.</summary>
+    private void DrawStatus(Action<string> write, string? message, bool menu = false)
+    {
+        _sticky = message;
+        _stickyUntil = message is null ? DateTime.MinValue : menu ? DateTime.MaxValue : DateTime.UtcNow.AddSeconds(6);
+        Paint(write, message);
+    }
+
+    /// <summary>The once-a-second refresh (fps): keeps a menu or a recent notice on screen.</summary>
+    private void RefreshStatus(Action<string> write)
+    {
+        if (_sticky is not null && DateTime.UtcNow < _stickyUntil) { Paint(write, _sticky); return; }
+        _sticky = null;
+        Paint(write, null);
+    }
+
+    private void Paint(Action<string> write, string? message)
     {
         int cols = Console.WindowWidth;
         var mode = _protocol == GraphicsProtocol.Blocks ? Ui.T(" | 簡易表示（Windows Terminal ならフル解像度）", " | low-res text mode (Windows Terminal shows full resolution)") : "";

@@ -123,6 +123,7 @@ public static class Wizard
         }
         if (state["display"]?.GetValue<bool>() != true)
         {
+            // HiDPI (2x display): twice the pixels at 200%, so the viewer shows sharp text.
             Step(T("画面を HiDPI（2 倍の細かさ）にします", "Switching the screen to HiDPI (twice the pixels)"));
             try
             {
