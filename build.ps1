@@ -1,7 +1,7 @@
 ﻿# Builds dist\terminal-windows.exe: one self-contained exe. The guest helper (copied into the VM by
 # unattended setup) is published to artifacts\guest first and embedded in it as a resource.
-# Usage: powershell -ExecutionPolicy Bypass -File build.ps1 [-Test]
-param([switch]$Test)
+# Usage: powershell -ExecutionPolicy Bypass -File build.ps1 [-Test] [-NoAot]
+param([switch]$Test, [switch]$NoAot)
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
 $dist = Join-Path $root 'dist'
@@ -27,8 +27,22 @@ if ($LASTEXITCODE -ne 0) { throw 'guest publish failed' }
 $guestExe = Join-Path $guestOut 'TerminalWindowsGuest.exe'
 # An old dist\guest folder would win over the embedded helper; remove it.
 if (Test-Path (Join-Path $dist 'guest')) { Remove-Item -Recurse -Force (Join-Path $dist 'guest') }
-dotnet publish (Join-Path $root 'src\TerminalWindows.Cli') @common -o $dist "-p:GuestExePath=$guestExe"
-if ($LASTEXITCODE -ne 0) { throw 'cli publish failed' }
+# The CLI as native code (Native AOT: starts several times faster) when this PC has the Visual Studio C++
+# tools that AOT needs for linking; otherwise the usual single-file build (needs only the .NET SDK).
+# -NoAot forces the usual build.
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+$aot = (-not $NoAot) -and (Test-Path $vswhere) -and
+       [bool](& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath)
+if ($aot) {
+    $env:PATH = (Split-Path $vswhere) + ';' + $env:PATH # the AOT linker step looks for vswhere on PATH
+    Write-Host 'CLI: Native AOT'
+    dotnet publish (Join-Path $root 'src\TerminalWindows.Cli') -c Release -r win-x64 -nologo -p:PublishAot=true -p:PublishSingleFile=false -o $dist "-p:GuestExePath=$guestExe"
+    if ($LASTEXITCODE -ne 0) { Write-Host 'Native AOT failed; building the usual single file instead.'; $aot = $false }
+}
+if (-not $aot) {
+    dotnet publish (Join-Path $root 'src\TerminalWindows.Cli') @common -o $dist "-p:GuestExePath=$guestExe"
+    if ($LASTEXITCODE -ne 0) { throw 'cli publish failed' }
+}
 
 Get-ChildItem $dist -Filter *.pdb -Recurse | Remove-Item
 Write-Host "Built:"

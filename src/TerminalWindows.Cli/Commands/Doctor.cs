@@ -121,6 +121,10 @@ public static class Doctor
         checks.Add(helper is null
             ? new("guest-helper", "error", "TerminalWindowsGuest.exe not found (expected in guest\\ next to terminal-windows.exe). Run build.ps1.")
             : new("guest-helper", "ok", helper));
+        var isoProblem = PayloadIso.SelfCheck();
+        checks.Add(isoProblem is null
+            ? new("setup-iso", "ok", "the setup disc can be built")
+            : new("setup-iso", "error", "building the setup disc failed: " + isoProblem));
 
         // Terminal
         var gfx = TerminalCaps.Detect();

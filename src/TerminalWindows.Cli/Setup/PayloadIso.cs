@@ -34,6 +34,30 @@ public static class PayloadIso
                                    "rem terminal-windows guest setup (runs inside the VM only)\r\n" +
                                    "\"%~dp0TerminalWindowsGuest.exe\" install --source \"%~dp0.\"\r\n";
 
+    /// <summary>
+    /// Builds a tiny setup disc in a temp folder with this binary's ISO code and reads it back
+    /// (doctor uses it: proves the builder works in this build, Native AOT included). Returns null when fine.
+    /// </summary>
+    public static string? SelfCheck()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "tw-isocheck-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var helper = Path.Combine(dir, "helper.bin");
+            File.WriteAllBytes(helper, Encoding.ASCII.GetBytes("helper"));
+            var iso = Path.Combine(dir, "check.iso");
+            Build(iso, "<unattend/>", new JsonObject { ["check"] = true }, helper);
+            using var fs = File.OpenRead(iso);
+            using var cd = new CDReader(fs, joliet: true);
+            using var s = cd.OpenFile(@"terminal-windows\guest.json", FileMode.Open);
+            using var r = new StreamReader(s);
+            return r.ReadToEnd().Contains("\"check\":true") ? null : "the disc read back differently";
+        }
+        catch (Exception ex) { return ex.GetType().Name + ": " + ex.Message; }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    }
+
     public static void Build(string isoPath, string unattendXml, JsonObject guestJson, string helperExe)
     {
         var builder = new CDBuilder { UseJoliet = true, VolumeIdentifier = "TWSETUP" };

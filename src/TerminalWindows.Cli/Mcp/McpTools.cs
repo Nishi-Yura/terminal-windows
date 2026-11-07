@@ -24,8 +24,8 @@ public static class McpTools
     public static JsonArray Definitions()
     {
         var list = Base();
-        foreach (var t in DesktopTools.Definitions()) list.Add(t);
-        list.Add(Tool("run_powershell", "Run a PowerShell script inside the VM (as the VM's user, elevated) and return stdout, stderr and the exit code. " +
+        foreach (var t in DesktopTools.Definitions()) list.Add((JsonNode)t);
+        list.Add((JsonNode)Tool("run_powershell", "Run a PowerShell script inside the VM (as the VM's user, elevated) and return stdout, stderr and the exit code. " +
             "Best for files, settings, installs and checks; use the GUI tools for apps.", new JsonObject
         {
             ["script"] = Str("PowerShell script"),

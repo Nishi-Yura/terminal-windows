@@ -144,6 +144,8 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Skill
 
 `%USERPROFILE%\.terminal-windows\bin` に入り、PATH に追加されます。新しいターミナルを開いてから続けてください。
 
+Visual Studio の C++ ツール（「C++ によるデスクトップ開発」）が入っている PC では、`build.ps1` が自動でネイティブコード（Native AOT）としてビルドし、起動が数倍速くなります（入っていなければ通常のビルドになります。`-NoAot` で通常のビルドを選べます）。
+
 **2. 環境を確認する**
 
 ```bash

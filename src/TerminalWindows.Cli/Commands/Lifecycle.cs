@@ -221,7 +221,7 @@ public static class Lifecycle
         foreach (var n in MachineStore.List())
         {
             var m = MachineStore.Load(n);
-            arr.Add(new JsonObject
+            arr.Add((JsonNode)new JsonObject
             {
                 ["name"] = n, ["vm"] = m.VmName, ["state"] = (await b.GetStateAsync(m.VmName)).ToString(),
                 ["setupComplete"] = m.SetupComplete, ["port"] = m.HostPort,

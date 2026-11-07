@@ -84,7 +84,6 @@ public static class Secrets
 
 public static class MachineStore
 {
-    private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly Regex NamePattern = new("^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$");
 
     /// <summary>
@@ -153,7 +152,7 @@ public static class MachineStore
     {
         var path = ConfigPath(name);
         if (!File.Exists(path)) throw new CliException($"Machine '{name}' does not exist. Create it with: terminal-windows up {name} --iso <path-to-Windows11.iso>");
-        return JsonSerializer.Deserialize<MachineConfig>(File.ReadAllText(path), JsonOpts) ?? throw new CliException($"Corrupt {path}");
+        return JsonSerializer.Deserialize(File.ReadAllText(path), MachineJson.Default.MachineConfig) ?? throw new CliException($"Corrupt {path}");
     }
 
     public static void Save(MachineConfig config)
@@ -162,7 +161,7 @@ public static class MachineStore
         Directory.CreateDirectory(dir);
         var path = ConfigPath(config.Name);
         var tmp = path + ".tmp";
-        File.WriteAllText(tmp, JsonSerializer.Serialize(config, JsonOpts));
+        File.WriteAllText(tmp, JsonSerializer.Serialize(config, MachineJson.Default.MachineConfig));
         RestrictToCurrentUser(tmp);
         File.Move(tmp, path, true);
         RestrictToCurrentUser(path);
@@ -184,3 +183,8 @@ public static class MachineStore
         new FileInfo(path).SetAccessControl(sec);
     }
 }
+
+/// <summary>machine.json, without runtime reflection (works in Native AOT builds too).</summary>
+[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(MachineConfig))]
+internal partial class MachineJson : JsonSerializerContext { }
