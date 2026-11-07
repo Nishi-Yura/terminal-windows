@@ -52,7 +52,7 @@ terminal-windows は、VMware Workstation（無料）か VirtualBox で **AI 専
 
 **0.1.0（開発中）**
 
-- Windows 11 Home（VMware Workstation 17.6）で、ISO からの完全自動セットアップ、画面表示と操作、MCP、スナップショット、VM の中の AI を確認しています。VirtualBox は、Windows のハイパーバイザーを切った状態で確認しています。
+- Windows 11 Home（VMware Workstation 17.6）で、ISO からの完全自動セットアップ（AI の導入まで含めて約 15 分）、画面表示と操作、MCP、スナップショット、VM の中の AI（Claude Code / Codex CLI / Gemini CLI）を確認しています。VirtualBox は、Windows のハイパーバイザーを切った状態で確認しています。
 - ビルド済みの配布物（Release）はありません。[1 行インストール](#いちばん簡単な方法-powershell-に-1-行)が、ソースから自動でビルドします。
 
 ---
@@ -293,6 +293,7 @@ terminal-windows codex default
 
 - どの AI にも、画面操作用の MCP サーバー `desktop` を登録します。
 - Codex と Gemini は Node.js（npm）で入れます。
+- Gemini CLI は、作業フォルダーを「信頼する」と答えるまで画面操作ツールを使いません。最初の起動で聞かれたら信頼を選んでください（選ぶのはご本人です）。
 - 説明書がすでにある場合は、あなたの書いた内容を残したまま、terminal-windows の部分だけを追加・更新します。
 - 各サービスの料金と利用条件は、それぞれのアカウントの契約に従います。
 

@@ -348,6 +348,10 @@ public static class Agent
         Console.WriteLine($"  2. terminal-windows {(agent.Id is "claude" or "codex" or "gemini" ? agent.Id : "term")} {m.Name}");
         Console.WriteLine("     " + agent.SignInNote);
         Console.WriteLine("     Your sign-in is stored inside the VM, where the agent can read it.");
+        if (agent.Id == "gemini")
+            // Gemini CLI disables MCP servers in folders it does not trust; trusting is the user's call, not ours.
+            Console.WriteLine(Ui.T("     Gemini CLI は、作業フォルダーを「信頼する」と答えるまで画面操作ツール（desktop）を使いません。最初の起動で聞かれたら信頼を選んでください。",
+                                   "     Gemini CLI keeps the screen tools (desktop) off until you trust the working folder: choose to trust it when asked on first start."));
         return 0;
     }
 
