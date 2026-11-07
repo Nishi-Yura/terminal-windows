@@ -178,20 +178,60 @@ terminal-windows connect
 
 `connect` は、この PC に入っている AI ツールを探して、それぞれに MCP サーバーと使い方の説明を登録します（メニューからも選べます。`--dry-run` を付けると、何を変えるかだけ表示します）。
 
-| ツール | MCP の登録先 | 使い方の説明 |
-|---|---|---|
-| Claude Code | `claude mcp add --scope user` | `~\.claude\skills\terminal-windows\SKILL.md` |
-| Claude Desktop | `%APPDATA%\Claude\claude_desktop_config.json` | MCP サーバーの説明文 |
-| Codex CLI | `~\.codex\config.toml` | `~\.codex\AGENTS.md` の専用セクション |
-| Gemini CLI | `~\.gemini\settings.json` | `~\.gemini\GEMINI.md` の専用セクション |
-| Cursor | `~\.cursor\mcp.json` | MCP サーバーの説明文 |
-| VS Code | `%APPDATA%\Code\User\mcp.json` | MCP サーバーの説明文 |
-| Windsurf | `~\.codeium\windsurf\mcp_config.json` | MCP サーバーの説明文 |
+| ID | ツール | MCP の登録先 | 使い方の説明 |
+|---|---|---|---|
+| `claude-code` | Claude Code | `claude mcp add --scope user` | `~\.claude\skills\terminal-windows\SKILL.md` |
+| `claude-desktop` | Claude Desktop | `%LOCALAPPDATA%\Claude-Data\claude_*\claude_desktop_config.json`（古い版は `%APPDATA%\Claude\`） | MCP サーバーの説明文 |
+| `codex` | Codex CLI（OpenAI / ChatGPT） | `~\.codex\config.toml` | `~\.codex\AGENTS.md` の専用セクション |
+| `gemini` | Gemini CLI（Google） | `~\.gemini\settings.json` | `~\.gemini\GEMINI.md` の専用セクション |
+| `antigravity` | Antigravity（Google） | `~\.gemini\antigravity\mcp_config.json` | MCP サーバーの説明文 |
+| `cursor` | Cursor | `~\.cursor\mcp.json` | MCP サーバーの説明文 |
+| `vscode` | VS Code（Copilot のエージェント） | `%APPDATA%\Code\User\mcp.json` | MCP サーバーの説明文 |
+| `cline` | Cline（VS Code 拡張） | `…\globalStorage\saoudrizwan.claude-dev\settings\cline_mcp_settings.json` | MCP サーバーの説明文 |
+| `windsurf` | Windsurf | `~\.codeium\windsurf\mcp_config.json` | MCP サーバーの説明文 |
+| `lmstudio` | LM Studio（手元のモデル。無料） | `~\.lmstudio\mcp.json` | MCP サーバーの説明文 |
+
+ChatGPT のアプリ（Web / デスクトップ）は、手元の PC で動く MCP サーバーにはつなげません（リモートのサーバーだけに対応）。ChatGPT のアカウントで使う場合は Codex CLI を使ってください。
 
 - 設定ファイルのほかの内容はそのまま残します。最初に書き換える前に、元のファイルを `*.bak-terminal-windows` として保存します。
 - コメント入りの JSON（VS Code など）は書き換えず、貼り付ける設定を表示します。
 - exe の場所を絶対パスで登録するので、PATH の変更がまだ反映されていないアプリでも動きます。
-- 上の表にないツールには、`terminal-windows mcp --config` で出る設定を貼ってください。
+- 上の表にないツールには、`terminal-windows mcp --config` で出る設定を貼ってください（よくある形式をまとめて表示します）。
+
+**登録の確認と変更**
+
+```bash
+terminal-windows connect --list                 # 対応ツールの一覧と、入っているか・登録済みか
+terminal-windows connect --tool codex,cursor    # まだ入れていないツールにも先に登録しておく
+terminal-windows connect --remove --tool cursor # 登録を外す（ほかの設定はそのまま）
+```
+
+**MCP がない AI でも使えます**
+
+コマンドを実行できる AI なら、次の 1 行を伝えるだけで VM を使えます。
+
+> Windows の VM を使う前に `terminal-windows skills get` を実行して、書かれている手順に従って
+
+`skills get` は使い方の説明を表示します。AI はそれを読んで、`terminal-windows action` で VM を操作します。
+
+```bash
+terminal-windows action default open notepad
+terminal-windows action default set-text --window メモ帳 --type Document --value "こんにちは"
+terminal-windows action default click-element --window メモ帳 --name ファイル
+terminal-windows action default read-text --window メモ帳
+terminal-windows action default run "Get-ChildItem $env:USERPROFILE\Desktop"
+```
+
+どのコマンドも結果を JSON で返し、失敗すると 0 以外で終わります。VM が止まっていれば自動で起動します。
+
+**無料で確認したこと**（チャットは送らず、MCP の起動と接続だけを確認）
+
+| ツール | 結果 |
+|---|---|
+| Claude Code | 接続して実際に操作（このリポジトリの開発で使用） |
+| Gemini CLI | `gemini mcp list` で Connected（作業フォルダーを信頼済みにする必要あり） |
+| Codex CLI | `codex mcp list` で enabled（`config.toml` を正しく読める） |
+| Claude Desktop / Cursor ほか | 設定ファイルどおりにサーバーを起動し、27 個のツールと VM の状態を取得 |
 
 MCP に対応した AI ツールから、次のツールで VM を操作できます。
 
@@ -342,7 +382,8 @@ src/TerminalWindows.Protocol   共通（通信のフレーム、RPC、トーク�
 src/TerminalWindows.Cli        ホスト CLI（VirtualBox の操作、無人セットアップ、ビューア、MCP サーバー、VM の中の AI）
 src/TerminalWindows.Guest      ゲスト用ヘルパー（画面取得 WGC→DXGI→GDI、SendInput、UI Automation、ConPTY、インストーラー、自己更新）
 tests/TerminalWindows.Tests    自動テスト
-skills/                        Claude Code 用スキル（ホスト用 / VM の中用）
+skills/                        この PC の AI 用スキル（プラグインとしても読み込まれる）
+guest-skills/                  VM の中の AI 用スキルと常設ブリーフ（exe に埋め込み、VM に書き込む）
 docs/VALIDATION.md             検証記録
 terminal-windows-SPEC.md       設計の元になった仕様書
 ```
@@ -363,7 +404,12 @@ dotnet test tests/TerminalWindows.Tests
 
 ### プラグイン
 
-このリポジトリは、Claude Code のプラグインとしても読み込めます（`.claude-plugin/`、`.mcp.json`、`skills/`）。
+このリポジトリは、Claude Code のプラグインとして入れられます（`.claude-plugin/`、`.mcp.json`、`skills/`）。先に `terminal-windows.exe` を 1 回開いて、インストールを済ませておいてください。
+
+```
+/plugin marketplace add Nishi-Yura/terminal-windows
+/plugin install terminal-windows@terminal-windows
+```
 
 </details>
 

@@ -11,11 +11,30 @@ namespace TerminalWindows.Cli.Commands;
 /// Coordinates are raw guest screen pixels (the MCP server rescales; this command does not).</summary>
 public static class ActionCommand
 {
+    public const string Verbs = "status|screenshot|click|double_click|right_click|drag|scroll|type|key|ui_tree|" +
+                                "find|click-element|set-text|wait-for|read-text|windows|focus|close|open|clipboard|run";
+
+    /// <summary>Element query options shared by the element verbs: --name --type --id --window --exact.</summary>
+    private static JsonObject Query(ParsedArgs a, Action<JsonObject>? extra = null)
+    {
+        var q = new JsonObject();
+        if (a.Opt("name") is { } n) q["name"] = n;
+        if (a.Opt("type") is { } t) q["control_type"] = t;
+        if (a.Opt("id") is { } id) q["automation_id"] = id;
+        if (a.Opt("window") is { } w) q["window"] = w;
+        if (a.Flag("exact")) q["exact"] = true;
+        extra?.Invoke(q);
+        a.RejectUnknown();
+        return q;
+    }
+
     public static async Task<int> RunAsync(ParsedArgs a)
     {
         var m = MachineStore.Load(a.Machine());
-        var verb = a.Pos(1, "action (screenshot|click|double_click|right_click|drag|scroll|type|key|ui_tree|status)");
+        var verb = a.Pos(1, "action (" + Verbs + ")");
         JsonObject result;
+        // Like the MCP server: a stopped or saved VM is started first (progress goes to stderr, JSON to stdout).
+        if (verb != "status") await new MachineManager().EnsureRunningAsync(m);
         await using var c = await GuestClient.ConnectAsync(m);
         switch (verb)
         {
@@ -84,8 +103,94 @@ public static class ActionCommand
                 a.RejectUnknown();
                 result = await c.CallAsync("status");
                 break;
+
+            // ---- element-level verbs (same as the MCP tools; for agents that only have a shell) ----
+            case "find":
+                result = await c.CallAsync("uia_find", Query(a, extra: q => q["max"] = a.Int("max", 20)), TimeSpan.FromSeconds(30));
+                break;
+            case "click-element":
+                result = await c.CallAsync("uia_act", Query(a, extra: q =>
+                {
+                    q["action"] = a.Opt("action") ?? "click";
+                    q["index"] = a.Int("index", 0);
+                }), TimeSpan.FromSeconds(30));
+                break;
+            case "set-text":
+            {
+                var value = a.Opt("value") ?? throw new UsageException("set-text needs --value TEXT");
+                result = await c.CallAsync("uia_act", Query(a, extra: q =>
+                {
+                    q["action"] = "set_value";
+                    q["value"] = value;
+                    q["index"] = a.Int("index", 0);
+                }), TimeSpan.FromMinutes(2));
+                break;
+            }
+            case "wait-for":
+            {
+                bool gone = a.Flag("gone");
+                int timeout = a.Int("timeout-ms", 30_000);
+                var q = Query(a, extra: o => o["max"] = 1);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                while (true)
+                {
+                    JsonObject r;
+                    try { r = await c.CallAsync("uia_find", (JsonObject)q.DeepClone(), TimeSpan.FromSeconds(30)); }
+                    catch (RpcException ex) when (ex.Message.Contains("No window title contains")) { r = new JsonObject { ["count"] = 0 }; }
+                    if ((r["count"]?.GetValue<int>() > 0) != gone) { r["waitedMs"] = sw.ElapsedMilliseconds; result = r; break; }
+                    if (sw.ElapsedMilliseconds >= timeout) throw new CliException(gone ? $"still there after {timeout} ms" : $"not found within {timeout} ms");
+                    await Task.Delay(500);
+                }
+                break;
+            }
+            case "read-text":
+            {
+                var args = new JsonObject { ["max_chars"] = a.Int("max-chars", 20000) };
+                if (a.Opt("window") is { } w) args["window"] = w;
+                a.RejectUnknown();
+                result = await c.CallAsync("uia_text", args, TimeSpan.FromSeconds(45));
+                break;
+            }
+            case "windows":
+                a.RejectUnknown();
+                result = await c.CallAsync("windows");
+                break;
+            case "focus" or "close":
+            {
+                var w = a.PosOrNull(2) ?? a.Opt("window") ?? throw new UsageException($"{verb} needs a window title");
+                var args = new JsonObject { ["window"] = w };
+                if (verb == "close") args["force"] = a.Flag("force");
+                a.RejectUnknown();
+                result = await c.CallAsync(verb == "focus" ? "window_focus" : "window_close", args);
+                break;
+            }
+            case "open":
+            {
+                var target = a.Pos(2, "TARGET (program, path or URL)");
+                var args = new JsonObject { ["target"] = target };
+                if (a.Opt("args") is { } extra) args["args"] = extra;
+                a.RejectUnknown();
+                result = await c.CallAsync("open", args, TimeSpan.FromSeconds(30));
+                break;
+            }
+            case "clipboard":
+            {
+                var text = a.Opt("set");
+                a.RejectUnknown();
+                result = text is null ? await c.CallAsync("clipboard_get") : await c.CallAsync("clipboard_set", new JsonObject { ["text"] = text });
+                break;
+            }
+            case "run":
+            {
+                var script = string.Join(' ', a.Positionals.Skip(2));
+                if (script.Length == 0) throw new UsageException("run needs a PowerShell script");
+                int t = a.Int("timeout", 120);
+                a.RejectUnknown();
+                result = await c.CallAsync("exec", new JsonObject { ["script"] = script, ["timeout_s"] = t }, TimeSpan.FromSeconds(t + 30));
+                break;
+            }
             default:
-                throw new UsageException($"Unknown action '{verb}'");
+                throw new UsageException($"Unknown action '{verb}'. Use one of: {Verbs}");
         }
         Output.Json(result);
         return 0;
@@ -223,13 +328,24 @@ public static class McpCommand
         a.RejectUnknown();
         if (config)
         {
-            var exe = Environment.ProcessPath ?? "terminal-windows.exe";
-            var server = new JsonObject { ["command"] = exe, ["args"] = new JsonArray("mcp", name) };
-            Console.WriteLine("# Claude Code:");
-            Console.WriteLine($"claude mcp add terminal-windows -- \"{exe}\" mcp {name}");
+            var exe = ConnectCommand.InstalledExe();
+            Console.WriteLine("# Easiest: register with every AI tool on this PC (or one: --tool ID; list: --list)");
+            Console.WriteLine($"terminal-windows connect {name}");
             Console.WriteLine();
-            Console.WriteLine("# Generic MCP client config (Claude Desktop, Cursor, ... ):");
-            Output.Json(new JsonObject { ["mcpServers"] = new JsonObject { ["terminal-windows"] = server } });
+            Console.WriteLine("# Claude Code");
+            Console.WriteLine($"claude mcp add --scope user terminal-windows -- \"{exe}\" mcp {name}");
+            Console.WriteLine();
+            Console.WriteLine("# Most clients (Claude Desktop, Cursor, Windsurf, Gemini CLI, Antigravity, Cline, LM Studio, ...): \"mcpServers\"");
+            Output.Json(new JsonObject { ["mcpServers"] = new JsonObject { ["terminal-windows"] = ConnectCommand.Stdio(exe, name) } });
+            Console.WriteLine();
+            Console.WriteLine("# VS Code (mcp.json): \"servers\"");
+            Output.Json(new JsonObject { ["servers"] = new JsonObject { ["terminal-windows"] = ConnectCommand.Stdio(exe, name, withType: true) } });
+            Console.WriteLine();
+            Console.WriteLine("# Codex CLI (~/.codex/config.toml)");
+            Console.Write(ConnectCommand.TomlBlock(exe, name));
+            Console.WriteLine();
+            Console.WriteLine("# AIs without MCP that can run commands: tell them to run this first, then use 'terminal-windows action'");
+            Console.WriteLine("terminal-windows skills get");
             return 0;
         }
         MachineStore.Load(name); // fail fast with a clear message

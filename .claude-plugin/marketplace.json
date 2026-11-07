@@ -1,0 +1,12 @@
+{
+  "name": "terminal-windows",
+  "owner": { "name": "Nishi-Yura", "url": "https://github.com/Nishi-Yura" },
+  "metadata": { "description": "An AI-only Windows 11 VM that coding agents can drive without touching your PC." },
+  "plugins": [
+    {
+      "name": "terminal-windows",
+      "source": "./",
+      "description": "MCP tools and a skill for driving the terminal-windows VM (screenshots, clicking controls by name, typing, reading window text, PowerShell, snapshots, files). Needs terminal-windows.exe installed (run it once)."
+    }
+  ]
+}

@@ -51,6 +51,28 @@ own mouse, keyboard and clipboard are never touched, so they keep working on the
 - Windows shortcuts that are handy: `win+r` (Run dialog), `win+e` (Explorer), `win` (Start),
   `ctrl+l` in Explorer/browsers (address bar).
 
+## Without MCP tools: the same actions as commands
+
+If you have no `terminal-windows` MCP tools but can run shell commands, use the CLI. Every command prints
+JSON and exits non-zero on failure; a stopped VM is started automatically. `NAME` is the VM (usually `default`).
+Coordinates here are the guest's real screen pixels (`status` shows the size).
+
+| MCP tool | Command |
+|---|---|
+| `status` | `terminal-windows action NAME status` |
+| `screenshot` | `terminal-windows action NAME screenshot --out shot.png` (then look at the file) |
+| `click` / `type` / `key` | `terminal-windows action NAME click X Y` · `type TEXT` · `key ctrl+s` |
+| `click_element` | `terminal-windows action NAME click-element --window W --name N [--type Button] [--action invoke]` |
+| `set_text` | `terminal-windows action NAME set-text --window W --name N --value TEXT` |
+| `wait_for` | `terminal-windows action NAME wait-for --window W --name N [--gone] [--timeout-ms 30000]` |
+| `read_text` / `find_element` | `terminal-windows action NAME read-text --window W` · `find --window W --type Edit` |
+| `list_windows` / `focus_window` / `close_window` | `terminal-windows action NAME windows` · `focus W` · `close W` |
+| `open` / clipboard | `terminal-windows action NAME open notepad` · `clipboard [--set TEXT]` |
+| `run_powershell` | `terminal-windows action NAME run "Get-ChildItem C:\"` |
+| `snapshot` / `restore` | `terminal-windows snapshot NAME --name LABEL` · `terminal-windows restore NAME LABEL` |
+| files | `terminal-windows push NAME FILE` (into Desktop\Inbox) · `terminal-windows pull NAME` (Outbox to this PC) |
+| notes | `terminal-windows notes NAME` (read) |
+
 ## Talking to the person
 
 - Answer in their language (Japanese if they write Japanese). Before long or risky steps say what you

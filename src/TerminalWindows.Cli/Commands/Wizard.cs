@@ -126,6 +126,18 @@ public static class Wizard
             await SnapshotCommands.SnapshotAsync(Args(Name, "--name", "agent-ready"));
             state["snapshot"] = true; SaveState(state);
         }
+        if (state["connected"] is null)
+        {
+            var tools = ConnectCommand.Targets().Where(t => t.Installed()).Select(t => t.Name).ToList();
+            if (tools.Count > 0)
+            {
+                Step(T($"この PC の AI ツール（{string.Join("、", tools)}）からも VM を使えるようにできます",
+                       $"The AI tools on this PC ({string.Join(", ", tools)}) can use the VM too"));
+                if (Ask(T("登録しますか？（設定は後から terminal-windows connect --remove で外せます）", "Register them? (undo later with terminal-windows connect --remove)"), defaultYes: true))
+                    await ConnectCommand.RunAsync(Args(Name));
+            }
+            state["connected"] = true; SaveState(state);
+        }
         state["done"] = true; SaveState(state);
 
         Title(T("準備ができました", "Ready"));

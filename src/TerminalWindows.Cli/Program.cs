@@ -35,6 +35,10 @@ Usage:
   terminal-windows notes NAME [--edit]
   terminal-windows clone NAME NEW [--from-snapshot LABEL]
   terminal-windows action NAME <screenshot|click|double_click|right_click|drag|scroll|type|key|ui_tree|status> ...
+  terminal-windows action NAME <find|click-element|set-text|wait-for> [--name N] [--type T] [--id ID] [--window W] [--exact]
+                               (click-element: [--action invoke|toggle|...]; set-text: --value TEXT; wait-for: [--gone])
+  terminal-windows action NAME <read-text [--window W] | windows | focus W | close W | open TARGET | clipboard [--set TEXT] | run SCRIPT>
+                               JSON on stdout, non-zero exit on failure; any AI that can run commands can use these
   terminal-windows mcp [NAME] [--config] [--sync-outbox]
 
 AI inside the VM:
@@ -45,8 +49,9 @@ AI inside the VM:
   terminal-windows exec NAME SCRIPT [--timeout 300]    run one PowerShell script inside the VM
   terminal-windows tune NAME [--defender] [--yes]      lighter guest: no visual effects/indexing/SysMain, high-perf power
   terminal-windows skills install [--dir PATH] | skills get
-  terminal-windows connect [NAME] [--dry-run]  let this PC's AI tools use the VM (Claude Code, Claude Desktop,
-                                           Codex, Gemini CLI, Cursor, VS Code, Windsurf: MCP + usage guide)
+  terminal-windows connect [NAME] [--list] [--tool ID[,ID]] [--remove] [--dry-run]
+                               let this PC's AI tools use the VM (MCP + usage guide). --list shows every supported tool;
+                               IDs: claude-code claude-desktop codex gemini antigravity cursor vscode cline windsurf lmstudio
   terminal-windows update-helper NAME
   terminal-windows iso-info ISO [--edition NAME]      (list editions; create picks Pro by default)
   terminal-windows selftest NAME [--with-restore]      (real-VM checklist; writes logsselftest-*.md)
@@ -60,6 +65,7 @@ Data: %USERPROFILE%\.terminal-windows\machines\NAME (override with TERMINAL_WIND
     {
         "offline", "auto-snapshot", "share-writable", "no-view", "detach", "plan", "shutdown", "force",
         "edit", "config", "sync-outbox", "json", "help", "verbose", "with-restore", "yes", "defender", "dry-run", "window",
+        "exact", "gone", "list", "remove",
     };
 
     public static async Task<int> Main(string[] args)

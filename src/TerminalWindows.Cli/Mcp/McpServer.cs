@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using TerminalWindows.Cli.Backend;
 using TerminalWindows.Cli.Infrastructure;
 using TerminalWindows.Protocol;
 
@@ -28,7 +29,7 @@ public sealed class McpServer
         "Start every session with read_notes. Loop: screenshot -> act -> screenshot to verify. " +
         "Coordinates are pixels of the latest screenshot image. Prefer the element tools (click_element, set_text, wait_for, read_text) " +
         "over pixel clicks when the control has a name; use run_powershell for files and settings. " +
-        "Take a snapshot before destructive changes. Put deliverables in Desktop\\Outbox and call export_file. " +
+        "A stopped VM starts automatically on the first action. Take a snapshot before destructive changes. Put deliverables in Desktop\\Outbox and call export_file. " +
         "If status reports a lock/logon screen, stop and tell the user. Record progress with append_notes.";
 
     public async Task RunAsync()
@@ -45,6 +46,9 @@ public sealed class McpServer
     {
         if (_client is not null) return _client;
         var m = MachineStore.Load(_machineName);
+        // A stopped / saved / paused VM is started on the first action (takes ~10-60 s); progress goes to stderr.
+        if (await _manager.Backend.GetStateAsync(m.VmName) != VmState.Running)
+            await _manager.EnsureRunningAsync(m);
         _client = await GuestClient.ConnectAsync(m);
         _client.Rpc.Disconnected += _ => _client = null;
         return _client;
@@ -200,6 +204,7 @@ public sealed class McpServer
                 var o = new JsonObject { ["machine"] = m.Name, ["vmState"] = state.ToString(), ["setupComplete"] = m.SetupComplete };
                 try
                 {
+                    if (state != VmState.Running) throw new CliException($"VM is {state}");
                     var c = await ClientAsync();
                     var st = await c.CallAsync("status");
                     o["helper"] = st;
@@ -211,6 +216,8 @@ public sealed class McpServer
                     await ResetClientAsync();
                     o["helper"] = "unreachable: " + ex.Message;
                 }
+                if (state != VmState.Running)
+                    o["note"] = "The VM is not running. Any action tool (screenshot, click, ...) starts it automatically; status does not.";
                 return Json(o);
             }
 
